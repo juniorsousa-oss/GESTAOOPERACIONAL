@@ -92,9 +92,9 @@ st.markdown(f"""
 header[data-testid="stHeader"]{{display:block!important;height:32px!important;min-height:32px!important;background:#090c0b!important;border-bottom:1px solid #1f2925!important}}
 [data-testid="stToolbar"]{{display:flex!important;align-items:center!important;justify-content:flex-end!important;height:32px!important;background:#090c0b!important}}
 button[data-testid="stSidebarCollapseButton"]{{display:flex!important;visibility:visible!important;pointer-events:auto!important}}
-section[data-testid="stSidebar"]{{background:{SIDEBAR_BG}!important;border-right:1px solid {BORDER};width:230px!important;min-width:230px!important;max-width:230px!important;overflow:hidden!important}}
-section[data-testid="stSidebar"]>div:first-child{{width:230px!important;min-width:230px!important;padding:0 9px 16px;overflow:hidden!important}}
-section[data-testid="stSidebar"][aria-expanded="false"]{{width:0!important;min-width:0!important;max-width:0!important}}
+section[data-testid="stSidebar"]{{background:{SIDEBAR_BG}!important;border-right:1px solid {BORDER};width:260px!important;min-width:260px!important;max-width:260px!important;flex:0 0 260px!important;overflow:hidden!important}}
+section[data-testid="stSidebar"]>div:first-child{{width:260px!important;min-width:260px!important;max-width:260px!important;box-sizing:border-box!important;padding:0 9px 16px;overflow:hidden!important}}
+section[data-testid="stSidebar"][aria-expanded="false"]{{width:0!important;min-width:0!important;max-width:0!important;flex-basis:0!important}}
 .stApp{{background:{APP_BG};color:{TEXT}}}.block-container{{max-width:1500px;padding:8px 34px 50px}}
 .hero{{display:flex;justify-content:space-between;align-items:center;gap:24px;margin:10px 0 24px;padding:20px 22px;border:1px solid {BORDER};border-radius:16px;background:linear-gradient(145deg,{PANEL},#0d1210);box-sizing:border-box;min-height:112px}}.hero h1{{margin:0;font-family:{fontes["titulo"]},sans-serif;font-size:30px;line-height:1.1;font-weight:900;color:{TEXT};text-transform:uppercase;letter-spacing:.3px}}.hero p,.muted{{font-family:{fontes["subtitulo"]},sans-serif;color:{MUTED}}}.hero p{{margin:8px 0 0;font-size:14px;line-height:1.4}}.period{{background:{PRIMARY};color:#111;padding:12px 18px;border-radius:10px;font-weight:900;text-transform:uppercase;white-space:nowrap;font-size:14px}}
 .section{{color:{PRIMARY};font-size:14px;font-weight:900;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px}}
