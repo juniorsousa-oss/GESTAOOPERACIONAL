@@ -290,89 +290,261 @@ def render_login() -> tuple[Client | None, dict[str, Any] | None]:
           .stApp {{ background:#ffffff !important; color:#202020 !important; }}
           [data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stSidebar"] {{ display:none !important; }}
           .block-container {{ max-width:100% !important; min-height:100vh !important; height:100vh !important; padding:0 !important; margin:0 !important; position:relative !important; overflow:hidden !important; }}
+
+          /* PROPORÇÕES IDÊNTICAS AO LOGIN DO MRP */
           .setta-login-wrap {{
-            position:fixed !important; left:50% !important; top:50% !important; transform:translate(-50%,-50%) !important;
-            width:286px !important; height:390px !important; margin:0 !important; padding:0 !important;
-            box-sizing:border-box !important; background:#fff !important; border:1px solid rgba(0,0,0,.13) !important;
-            border-radius:28px !important; box-shadow:0 16px 42px rgba(0,0,0,.16) !important;
-            overflow:visible !important; z-index:10 !important;
+            position:fixed !important;
+            left:50% !important;
+            top:50% !important;
+            transform:translate(-50%,-50%) !important;
+            width:400px !important;
+            height:500px !important;
+            margin:0 !important;
+            padding:0 !important;
+            box-sizing:border-box !important;
+            background:#fff !important;
+            border:1px solid rgba(0,0,0,.13) !important;
+            border-radius:26px !important;
+            box-shadow:0 18px 48px rgba(0,0,0,.16) !important;
+            overflow:visible !important;
+            z-index:10 !important;
           }}
+
           .setta-login-image {{
-            width:100% !important; height:135px !important; transform:translateY(-30px) !important; overflow:hidden !important; background:transparent !important;
-            display:flex !important; align-items:flex-end !important; justify-content:center !important;
-            padding:20px 18px 8px !important; box-sizing:border-box !important;
+            width:100% !important;
+            height:140px !important;
+            transform:none !important;
+            overflow:hidden !important;
+            background:transparent !important;
+            display:flex !important;
+            align-items:center !important;
+            justify-content:center !important;
+            padding:18px 28px 4px !important;
+            box-sizing:border-box !important;
           }}
           .setta-login-image img {{
-            width:auto !important; height:auto !important; max-width:165px !important; max-height:76px !important;
-            object-fit:contain !important; object-position:center !important; display:block !important;
+            width:auto !important;
+            height:auto !important;
+            max-width:220px !important;
+            max-height:82px !important;
+            object-fit:contain !important;
+            object-position:center !important;
+            display:block !important;
           }}
-          .setta-login-image-empty {{ display:flex !important; align-items:flex-end !important; justify-content:center !important; }}
-          .setta-login-image-empty div {{ font-size:2.55rem !important; font-weight:850 !important; font-style:italic !important; line-height:1 !important; color:#111 !important; }}
-          .setta-login-heading {{ text-align:center !important; padding:0 20px !important; height:58px !important; transform:translateY(-30px) !important; box-sizing:border-box !important; }}
-          .setta-login-title {{ color:#111 !important; font-size:14px !important; line-height:17px !important; font-weight:800 !important; margin:0 !important; }}
-          div[data-testid="InputInstructions"], div[data-testid="stTextInput"] div[data-testid="InputInstructions"] {{ display:none !important; }}
+          .setta-login-image-empty {{
+            display:flex !important;
+            align-items:center !important;
+            justify-content:center !important;
+          }}
+          .setta-login-image-empty div {{
+            font-size:3.4rem !important;
+            font-weight:850 !important;
+            font-style:italic !important;
+            line-height:1 !important;
+            color:#111 !important;
+          }}
+
+          .setta-login-heading {{
+            width:100% !important;
+            height:66px !important;
+            transform:none !important;
+            margin:0 !important;
+            padding:0 28px !important;
+            box-sizing:border-box !important;
+            display:flex !important;
+            align-items:flex-start !important;
+            justify-content:center !important;
+            text-align:center !important;
+          }}
+          .setta-login-title {{
+            color:#111 !important;
+            font-size:18px !important;
+            line-height:24px !important;
+            font-weight:800 !important;
+            margin:0 !important;
+            padding:0 !important;
+            text-align:center !important;
+          }}
+
+          div[data-testid="InputInstructions"],
+          div[data-testid="stTextInput"] div[data-testid="InputInstructions"] {{
+            display:none !important;
+          }}
+
           div[data-testid="stForm"] {{
-            position:fixed !important; left:50% !important; top:calc(40% + 15px) !important; transform:translateX(-50%) !important;
-            width:286px !important; height:170px !important; margin:0 !important; padding:0 20px 14px !important;
-            box-sizing:border-box !important; background:transparent !important; border:0 !important;
-            border-radius:0 !important; box-shadow:none !important; z-index:20 !important;
+            position:fixed !important;
+            left:50% !important;
+            top:calc(50% + 60px) !important;
+            transform:translate(-50%,-50%) !important;
+            width:300px !important;
+            height:auto !important;
+            margin:0 !important;
+            padding:0 !important;
+            box-sizing:border-box !important;
+            background:transparent !important;
+            border:0 !important;
+            border-radius:0 !important;
+            box-shadow:none !important;
+            z-index:20 !important;
           }}
-          div[data-testid="stForm"] label {{ color:#202020 !important; font-size:9px !important; line-height:12px !important; font-weight:600 !important; margin-bottom:2px !important; }}
-          div[data-testid="stForm"] [data-testid="stTextInput"] {{ width:100% !important; margin-bottom:9px !important; }}
-          div[data-testid="stForm"] input {{
-            width:100% !important; height:27px !important; min-height:27px !important; box-sizing:border-box !important;
-            padding:0 10px !important; border:0 !important; outline:none !important; box-shadow:none !important;
-            border-radius:6px !important; background:#f0f2f6 !important; color:#202020 !important; -webkit-text-fill-color:#202020 !important; font-size:8px !important;
+          div[data-testid="stForm"] label {{
+            color:#202020 !important;
+            font-size:12px !important;
+            line-height:17px !important;
+            font-weight:650 !important;
+            margin-bottom:5px !important;
           }}
+          div[data-testid="stForm"] [data-testid="stTextInput"] {{
+            width:100% !important;
+            margin-bottom:3px !important;
+          }}
+
           div[data-testid="stForm"] [data-baseweb="input"] {{
-            width:100% !important; height:31px !important; min-height:31px !important; box-sizing:border-box !important;
-            display:flex !important; align-items:center !important; border:2px solid #050505 !important;
-            border-radius:8px !important; background:#f0f2f6 !important; box-shadow:none !important; overflow:hidden !important;
+            width:100% !important;
+            height:35px !important;
+            min-height:35px !important;
+            display:flex !important;
+            align-items:center !important;
+            box-sizing:border-box !important;
+            border:2px solid #050505 !important;
+            border-radius:8px !important;
+            background:#f0f2f6 !important;
+            box-shadow:none !important;
+            overflow:hidden !important;
             color:#202020 !important;
           }}
           div[data-testid="stForm"] [data-baseweb="base-input"] {{
-            width:100% !important; height:27px !important; min-height:27px !important;
-            border:0 !important; outline:0 !important; box-shadow:none !important;
-            background:#f0f2f6 !important; color:#202020 !important;
+            width:100% !important;
+            height:35px !important;
+            min-height:35px !important;
+            border:0 !important;
+            outline:0 !important;
+            box-shadow:none !important;
+            background:#f0f2f6 !important;
+            color:#202020 !important;
           }}
           div[data-testid="stForm"] [data-baseweb="input"] > div {{
-            height:27px !important; min-height:27px !important; background:#f0f2f6 !important; color:#202020 !important;
+            height:35px !important;
+            min-height:35px !important;
+            display:flex !important;
+            align-items:center !important;
+            box-sizing:border-box !important;
+            background:#f0f2f6 !important;
+            color:#202020 !important;
+          }}
+          div[data-testid="stForm"] input {{
+            width:100% !important;
+            height:35px !important;
+            min-height:35px !important;
+            line-height:normal !important;
+            padding:0 12px !important;
+            margin:0 !important;
+            box-sizing:border-box !important;
+            border:0 !important;
+            outline:none !important;
+            box-shadow:none !important;
+            border-radius:8px !important;
+            background:#f0f2f6 !important;
+            color:#202020 !important;
+            -webkit-text-fill-color:#202020 !important;
+            font-size:13px !important;
           }}
           div[data-testid="stForm"] [data-testid="stTextInput"] [data-baseweb="input"] button {{
-            width:34px !important; height:27px !important; min-height:27px !important; margin:0 !important; padding:0 !important;
-            flex:0 0 34px !important; position:static !important; top:auto !important; border:0 !important;
-            border-radius:0 !important; background:transparent !important; color:#050505 !important;
-            box-shadow:none !important; display:flex !important; align-items:center !important; justify-content:center !important;
+            width:38px !important;
+            min-width:38px !important;
+            height:35px !important;
+            min-height:35px !important;
+            flex:0 0 38px !important;
+            margin:0 !important;
+            padding:0 !important;
+            position:static !important;
+            top:auto !important;
+            border:0 !important;
+            border-radius:0 !important;
+            background:transparent !important;
+            color:#050505 !important;
+            box-shadow:none !important;
+            display:flex !important;
+            align-items:center !important;
+            justify-content:center !important;
+            box-sizing:border-box !important;
           }}
-          div[data-testid="stForm"] [data-testid="stTextInput"] [data-baseweb="input"] button:hover {{ background:transparent !important; border:0 !important; color:#050505 !important; }}
-          div[data-testid="stForm"] [data-testid="stTextInput"] [data-baseweb="input"] button svg {{ width:16px !important; height:16px !important; margin:0 !important; }}
-          div[data-testid="stForm"] input::placeholder {{ color:#a6adb8 !important; opacity:1 !important; }}
-          div[data-testid="stForm"] input:focus {{ outline:none !important; border:0 !important; box-shadow:none !important; background:#f0f2f6 !important; color:#202020 !important; -webkit-text-fill-color:#202020 !important; }}
+          div[data-testid="stForm"] [data-testid="stTextInput"] [data-baseweb="input"] button:hover {{
+            background:transparent !important;
+            border:0 !important;
+            color:#050505 !important;
+          }}
+          div[data-testid="stForm"] [data-testid="stTextInput"] [data-baseweb="input"] button svg {{
+            width:17px !important;
+            height:17px !important;
+            margin:0 !important;
+            display:block !important;
+          }}
+          div[data-testid="stForm"] input::placeholder {{
+            color:#a6adb8 !important;
+            opacity:1 !important;
+          }}
+          div[data-testid="stForm"] input:focus {{
+            outline:none !important;
+            border:0 !important;
+            box-shadow:none !important;
+            background:#f0f2f6 !important;
+            color:#202020 !important;
+            -webkit-text-fill-color:#202020 !important;
+          }}
           div[data-testid="stForm"] input:-webkit-autofill,
           div[data-testid="stForm"] input:-webkit-autofill:hover,
           div[data-testid="stForm"] input:-webkit-autofill:focus {{
             -webkit-box-shadow:0 0 0 1000px #f0f2f6 inset !important;
             -webkit-text-fill-color:#202020 !important;
           }}
+
           div[data-testid="stForm"] [data-testid="stFormSubmitButton"] button {{
-            position:static !important; width:100% !important; height:29px !important; min-height:29px !important;
-            margin:8px 0 0 !important; padding:0 !important; box-sizing:border-box !important; border-radius:7px !important;
-            background:#050505 !important; border:1px solid #050505 !important; color:#fff !important;
-            font-size:8px !important; font-weight:700 !important; display:flex !important; align-items:center !important; justify-content:center !important;
+            position:static !important;
+            width:100% !important;
+            height:50px !important;
+            min-height:50px !important;
+            margin:10px 0 0 !important;
+            padding:0 !important;
+            box-sizing:border-box !important;
+            border-radius:10px !important;
+            background:#050505 !important;
+            border:1px solid #050505 !important;
+            color:#fff !important;
+            font-size:13px !important;
+            font-weight:750 !important;
+            display:flex !important;
+            align-items:center !important;
+            justify-content:center !important;
           }}
-          div[data-testid="stForm"] [data-testid="stFormSubmitButton"] button:hover {{ background:#171717 !important; border-color:#171717 !important; }}
-          div[data-testid="stForm"] [data-testid="stFormSubmitButton"] button p {{ color:#fff !important; }}
-          div[data-testid="stAlert"] {{ position:fixed !important; left:50% !important; top:calc(50% + 205px) !important; transform:translateX(-50%) !important; width:286px !important; box-sizing:border-box !important; z-index:30 !important; }}
+          div[data-testid="stForm"] [data-testid="stFormSubmitButton"] button:hover {{
+            background:#171717 !important;
+            border-color:#171717 !important;
+          }}
+          div[data-testid="stForm"] [data-testid="stFormSubmitButton"] button p {{
+            color:#fff !important;
+          }}
+
+          div[data-testid="stAlert"] {{
+            position:fixed !important;
+            left:50% !important;
+            top:calc(50% + 270px) !important;
+            transform:translateX(-50%) !important;
+            width:400px !important;
+            box-sizing:border-box !important;
+            z-index:30 !important;
+          }}
+
           @media (max-width:480px) {{
             .setta-login-wrap {{
-              width:286px !important;
-              transform:translate(-50%,-50%) scale(1.18) !important;
-              transform-origin:center center !important;
+              width:360px !important;
+              height:500px !important;
             }}
             div[data-testid="stForm"] {{
-              width:286px !important;
-              transform:translateX(-50%) scale(1.18) !important;
-              transform-origin:top center !important;
+              width:312px !important;
+            }}
+            div[data-testid="stAlert"] {{
+              width:360px !important;
             }}
           }}
         </style>
