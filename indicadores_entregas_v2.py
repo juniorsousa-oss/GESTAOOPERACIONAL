@@ -11,6 +11,7 @@ import pandas as pd
 import streamlit as st
 from supabase_client import get_client
 from indicadores_historico import salvar_snapshot_otif
+from indicadores_api import carregar_otif_central, rotulo_fonte, status_otif_central
 
 INDICADOR = "ENTREGAS NO PRAZO"
 TZ_APP = ZoneInfo("America/Sao_Paulo")
@@ -113,12 +114,35 @@ def _fmt_date(value):
 
 
 def _build_mrp(mrp_file):
-    # Terceira aba: Demanda_Projeto. A e B formam a chave Projeto_Código.
-    raw = _read_excel(mrp_file, sheet_name=2, usecols="A,B,G,H,I,J,K,L,M,N", dtype=str)
-    raw.columns = [
-        "Projeto", "Código", "Semana Atendimento", "Necessidade MRP", "Estoque atual MRP",
-        "Pré Nota", "P.C.", "Fabricação", "S.C.", "Ação MRP",
-    ]
+    # A Central SETTA publica diretamente a Demanda_Projeto como JSON/GZIP.
+    # O modo manual continua aceitando o Excel completo do MRP.
+    if isinstance(mrp_file, pd.DataFrame):
+        raw = mrp_file.copy()
+        rename = {
+            "Produto": "Código",
+            "Semana de Atendimento": "Semana Atendimento",
+            "Necessidade": "Necessidade MRP",
+            "Estoque": "Estoque atual MRP",
+            "Ação": "Ação MRP",
+        }
+        raw = raw.rename(columns=rename)
+        expected = [
+            "Projeto", "Código", "Semana Atendimento", "Necessidade MRP",
+            "Estoque atual MRP", "Pré Nota", "P.C.", "Fabricação", "S.C.", "Ação MRP",
+        ]
+        missing = [col for col in expected if col not in raw.columns]
+        if missing:
+            raise ValueError(
+                "Relatório MRP da Central não possui as colunas esperadas: " + ", ".join(missing)
+            )
+        raw = raw[expected].copy()
+    else:
+        # Terceira aba: Demanda_Projeto. A e B formam a chave Projeto_Código.
+        raw = _read_excel(mrp_file, sheet_name=2, usecols="A,B,G,H,I,J,K,L,M,N", dtype=str)
+        raw.columns = [
+            "Projeto", "Código", "Semana Atendimento", "Necessidade MRP", "Estoque atual MRP",
+            "Pré Nota", "P.C.", "Fabricação", "S.C.", "Ação MRP",
+        ]
     raw["Projeto"] = raw["Projeto"].map(_norm_project)
     raw["Código normalizado"] = raw["Código"].map(_norm_code)
     raw["Projeto_Código"] = raw["Projeto"] + "_" + raw["Código normalizado"]
@@ -764,13 +788,61 @@ def render_alimentacao_entregas_v2(indicadores):
             f"Registro: {hoje.strftime('%d/%m/%Y')} · Período automático: 01/{hoje.strftime('%m/%Y')} a {periodo_fim.strftime('%d/%m/%Y')}. "
             "Fonte mestre: Relatório Geral. O MRP é usado para explicar a causa atual das pendências."
         )
-        c1, c2 = st.columns(2)
-        with c1:
-            relatorio = st.file_uploader("RELATÓRIO GERAL", type=["xlsx", "xlsm"], key="otif_relatorio")
-            cadastro = st.file_uploader("CADASTROS", type=["xlsx", "xlsm", "xltx"], key="otif_cadastro")
-        with c2:
-            for022 = st.file_uploader("SEN-PCP-FOR-022 · PLANEJAMENTO MACRO", type=["xlsx", "xlsm"], key="otif_for022")
-            mrp = st.file_uploader("MRP · RELATÓRIOS COMPLETOS", type=["xlsx", "xlsm"], key="otif_mrp")
+
+        fonte = st.radio(
+            "FONTE DOS DADOS",
+            ["CENTRAL SETTA · API", "ARQUIVOS MANUAIS"],
+            horizontal=True,
+            key="otif_fonte_dados",
+        )
+
+        relatorio = for022 = cadastro = mrp = None
+        fingerprint_base = ""
+
+        if fonte == "CENTRAL SETTA · API":
+            try:
+                state = status_otif_central()
+                src = state.get("sources") or {}
+                der = state.get("derived") or {}
+                st.caption(
+                    " · ".join([
+                        f"RELATÓRIO GERAL: {rotulo_fonte(src.get('relatorio_geral'))}",
+                        f"FOR022: {rotulo_fonte(src.get('for022'))}",
+                        f"CADASTROS: {rotulo_fonte(src.get('cadastros'))}",
+                        f"MRP: {rotulo_fonte(der.get('relatorio_mrp'))}",
+                    ])
+                )
+                if not state.get("ready"):
+                    st.warning("A Central SETTA ainda não possui todas as quatro bases necessárias para o OTIF.")
+                    return
+
+                with st.spinner("Carregando bases atualizadas da Central SETTA..."):
+                    bundle = carregar_otif_central()
+                relatorio = bundle["relatorio"]
+                for022 = bundle["for022"]
+                cadastro = bundle["cadastro"]
+                mrp = bundle["mrp"]
+                fingerprint_base = str(bundle.get("fingerprint") or "")
+                st.success("Bases carregadas automaticamente pela API da Central SETTA.")
+            except Exception as exc:
+                st.error(f"Não foi possível carregar as bases pela API: {exc}")
+                st.caption("Use ARQUIVOS MANUAIS como contingência enquanto a integração estiver indisponível.")
+                return
+        else:
+            c1, c2 = st.columns(2)
+            with c1:
+                relatorio = st.file_uploader("RELATÓRIO GERAL", type=["xlsx", "xlsm"], key="otif_relatorio")
+                cadastro = st.file_uploader("CADASTROS", type=["xlsx", "xlsm", "xltx"], key="otif_cadastro")
+            with c2:
+                for022 = st.file_uploader("SEN-PCP-FOR-022 · PLANEJAMENTO MACRO", type=["xlsx", "xlsm"], key="otif_for022")
+                mrp = st.file_uploader("MRP · RELATÓRIOS COMPLETOS", type=["xlsx", "xlsm"], key="otif_mrp")
+            if any(x is None for x in (relatorio, for022, cadastro, mrp)):
+                st.info("Envie as quatro bases para gerar a apuração em camadas.")
+                return
+            fingerprint_base = hashlib.sha256(
+                relatorio.getvalue() + for022.getvalue() + cadastro.getvalue() + mrp.getvalue()
+            ).hexdigest()
+
         m1, m2 = st.columns([1, 1])
         with m1:
             st.text_input("Data do registro", value=hoje.strftime("%d/%m/%Y"), disabled=True, key="otif_data")
@@ -779,12 +851,8 @@ def render_alimentacao_entregas_v2(indicadores):
             st.number_input("Meta OTIF Almox (%)", min_value=0.0, max_value=100.0, value=float(meta), step=0.1, disabled=True, key="otif_meta")
             st.caption(f"Meta automática do mês: {meta:.2f}% · evolução mensal de +2,60 p.p.")
 
-        if any(x is None for x in (relatorio, for022, cadastro, mrp)):
-            st.info("Envie as quatro bases para gerar a apuração em camadas.")
-            return
-
         fingerprint = hashlib.sha256(
-            LOGIC_VERSION.encode() + relatorio.getvalue() + for022.getvalue() + cadastro.getvalue() + mrp.getvalue() + hoje.isoformat().encode()
+            (LOGIC_VERSION + "|" + fonte + "|" + fingerprint_base + "|" + hoje.isoformat()).encode("utf-8")
         ).hexdigest()
         if st.session_state.get("otif_fingerprint") != fingerprint:
             try:
