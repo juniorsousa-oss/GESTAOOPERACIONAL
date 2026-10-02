@@ -100,6 +100,138 @@ def _download_source_cached(source_key: str, version: int, updated_at: str) -> b
     return _download_url(signed_url)
 
 
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=12)
+def _download_normalized_source_cached(
+    source_key: str,
+    version: int,
+    updated_at: str,
+) -> dict:
+    del version, updated_at
+    data = central_api_call(
+        "source_normalized_download",
+        {"source_key": source_key},
+    ).get("data") or {}
+    signed_url = str(data.get("signed_url") or "")
+    if not signed_url:
+        raise RuntimeError(f"Fonte normalizada {source_key} sem URL de leitura.")
+    compressed = _download_url(signed_url)
+    pack = json.loads(gzip.decompress(compressed).decode("utf-8"))
+    if str(pack.get("format") or "") != "SETTA_SOURCE_V1":
+        raise RuntimeError(f"Formato normalizado inválido para {source_key}.")
+    return pack
+
+
+def _excel_col_to_index(value: str) -> int:
+    result = 0
+    for char in str(value).strip().upper():
+        if not ("A" <= char <= "Z"):
+            raise ValueError(f"Coluna Excel inválida: {value}")
+        result = result * 26 + (ord(char) - 64)
+    return result - 1
+
+
+def _usecols_indexes(usecols: Any, width: int) -> list[int] | None:
+    if usecols is None:
+        return None
+    if isinstance(usecols, (list, tuple)):
+        return [int(x) for x in usecols]
+    text = str(usecols).strip()
+    if not text:
+        return None
+    indexes: list[int] = []
+    for token in text.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        if ":" in token:
+            left, right = token.split(":", 1)
+            a = _excel_col_to_index(left)
+            b = _excel_col_to_index(right)
+            indexes.extend(range(min(a, b), max(a, b) + 1))
+        else:
+            indexes.append(_excel_col_to_index(token))
+    return [idx for idx in indexes if 0 <= idx < width]
+
+
+def source_frame(
+    pack: dict,
+    *,
+    sheet_name: str | int = 0,
+    header: int | None = 0,
+    usecols: Any = None,
+    dtype: Any = None,
+) -> pd.DataFrame:
+    sheets = [
+        item for item in (pack.get("sheets") or [])
+        if isinstance(item, dict)
+    ]
+    if not sheets:
+        raise ValueError("Pacote normalizado sem planilhas.")
+
+    if isinstance(sheet_name, str):
+        selected = next(
+            (item for item in sheets if str(item.get("name") or "") == sheet_name),
+            None,
+        )
+        if selected is None:
+            raise ValueError(f"A planilha '{sheet_name}' não foi encontrada.")
+    else:
+        index = int(sheet_name)
+        if index < 0 or index >= len(sheets):
+            raise ValueError(f"Índice de planilha inválido: {index}.")
+        selected = sheets[index]
+
+    raw = pd.DataFrame(selected.get("rows") or [])
+    indexes = _usecols_indexes(usecols, raw.shape[1])
+    if indexes is not None:
+        raw = raw.iloc[:, indexes].copy()
+
+    if header is None:
+        frame = raw.reset_index(drop=True)
+    else:
+        header_index = int(header)
+        if header_index < 0 or header_index >= len(raw):
+            raise ValueError(f"Linha de cabeçalho inválida: {header_index}.")
+        values = raw.iloc[header_index].tolist()
+        used: dict[str, int] = {}
+        columns = []
+        for idx, value in enumerate(values):
+            base = (
+                f"Unnamed: {idx}"
+                if value is None or str(value).strip() == ""
+                else str(value)
+            )
+            count = used.get(base, 0)
+            used[base] = count + 1
+            columns.append(base if count == 0 else f"{base}.{count}")
+        frame = raw.iloc[header_index + 1 :].reset_index(drop=True).copy()
+        frame.columns = columns
+
+    if dtype is str:
+        for col in frame.columns:
+            frame[col] = frame[col].map(
+                lambda value: value if pd.isna(value) else str(value)
+            )
+    return frame
+
+
+def _download_preferred_source(
+    source_key: str,
+    version: int,
+    updated_at: str,
+) -> Any:
+    try:
+        return _download_normalized_source_cached(
+            source_key,
+            version,
+            updated_at,
+        )
+    except Exception:
+        return io.BytesIO(
+            _download_source_cached(source_key, version, updated_at)
+        )
+
+
 @st.cache_data(ttl=3600, show_spinner=False, max_entries=8)
 def _download_derived_cached(
     base_key: str,
@@ -147,12 +279,11 @@ def carregar_otif_central() -> dict:
     arquivos: dict[str, io.BytesIO] = {}
     for key in SOURCE_KEYS_OTIF:
         meta = sources[key]
-        raw = _download_source_cached(
+        arquivos[key] = _download_preferred_source(
             key,
             int(meta.get("version") or 0),
             str(meta.get("last_update_at") or meta.get("updated_at") or ""),
         )
-        arquivos[key] = io.BytesIO(raw)
 
     mrp = _download_derived_cached(
         DERIVED_KEY_OTIF,
