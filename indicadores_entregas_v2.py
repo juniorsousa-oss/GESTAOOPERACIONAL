@@ -11,7 +11,7 @@ import pandas as pd
 import streamlit as st
 from supabase_client import get_client
 from indicadores_historico import salvar_snapshot_otif
-from indicadores_api import carregar_otif_central, rotulo_fonte, status_otif_central
+from indicadores_api import carregar_otif_central, rotulo_fonte, status_otif_central, source_frame
 
 INDICADOR = "ENTREGAS NO PRAZO"
 TZ_APP = ZoneInfo("America/Sao_Paulo")
@@ -80,7 +80,7 @@ def _num_series(series):
 
 def _file_hash(uploaded):
     # Arquivos manuais chegam como UploadedFile/BytesIO; pela Central SETTA,
-    # o Relatório MRP chega já convertido em DataFrame.
+    # fontes brutas chegam em SETTA_SOURCE_V1 e o Relatório MRP como DataFrame.
     if isinstance(uploaded, pd.DataFrame):
         data = uploaded.to_json(
             orient="table",
@@ -88,12 +88,22 @@ def _file_hash(uploaded):
             force_ascii=False,
             index=False,
         ).encode("utf-8")
+    elif isinstance(uploaded, dict) and str(uploaded.get("format") or "") == "SETTA_SOURCE_V1":
+        data = json.dumps(
+            uploaded,
+            ensure_ascii=False,
+            sort_keys=True,
+            default=str,
+            separators=(",", ":"),
+        ).encode("utf-8")
     else:
         data = uploaded.getvalue()
     return hashlib.sha256(data).hexdigest(), len(data)
 
 
 def _read_excel(uploaded, **kwargs):
+    if isinstance(uploaded, dict) and str(uploaded.get("format") or "") == "SETTA_SOURCE_V1":
+        return source_frame(uploaded, **kwargs)
     return pd.read_excel(BytesIO(uploaded.getvalue()), engine="openpyxl", **kwargs)
 
 
