@@ -21,9 +21,9 @@ CORES={"Amarelo (Padrão)":"#ffd43d","Azul":"#1683ff","Verde":"#22c55e","Vermelh
 TEMAS=["Escuro (Padrão)","Claro","Automático"]
 ESTILOS_BOTOES=["Amarelo","Colorido"]
 TEXTOS_PADRAO={
-    "menu_dashboard":"Dashboard","menu_indicadores":"Alimentar Indicadores","menu_historico":"Histórico",
+    "menu_indicadores":"Alimentar Indicadores","menu_historico":"Histórico",
     "menu_equipes":"Gestão de Equipes","menu_carreira":"Plano de Carreira","menu_configuracoes":"Configurações",
-    "titulo_dashboard":"Dashboard","titulo_indicadores":"Indicadores Operacionais","titulo_historico":"Histórico",
+    "titulo_indicadores":"Indicadores Operacionais","titulo_historico":"Histórico",
     "titulo_equipes":"Gestão de Equipes","titulo_carreira":"Plano de Carreira","titulo_configuracoes":"Configurações",
     "subtitulo_global":"Gestão operacional do almoxarifado","secao_dados_reais":"Dados reais do Supabase",
     "secao_indicadores":"Indicadores","secao_historico":"Histórico real","secao_colaboradores":"Colaboradores",
@@ -204,8 +204,8 @@ def vincular_colaborador_a_equipe(cid,eid,nome=None):
     rows.clear()
     return resultado
 
-if "pagina" not in st.session_state:st.session_state.pagina="dashboard"
-paginas_ids=["dashboard","indicadores","historico","equipes","configuracoes"]
+if "pagina" not in st.session_state:st.session_state.pagina="equipes"
+paginas_ids=["indicadores","historico","equipes","configuracoes"]
 if st.session_state.pagina=="carreira":st.session_state.pagina="equipes"
 with st.sidebar:
     logo_b64=config.get("logo_base64")
@@ -229,20 +229,7 @@ try:get_client();conectado=True
 except Exception:conectado=False
 if not conectado:st.error("Supabase ainda não está configurado no ambiente do Streamlit.");st.stop()
 
-if pagina=="dashboard":
-    indicadores=rows("almox_indicadores",order="competencia");colaboradores=rows("almox_colaboradores",columns="id");equipes=rows("almox_equipes",columns="id");historico=rows("almox_historico",order="criado_em",columns="id");snapshots=rows("mrp_snapshots",order="created_at",columns="id,created_at")
-    st.markdown(f'<div class="section">{txt("secao_dados_reais")}</div>',unsafe_allow_html=True)
-    a,b,c,d=st.columns(4);a.metric(txt("secao_indicadores"),len(indicadores));b.metric(txt("secao_colaboradores"),len(colaboradores));c.metric(txt("secao_equipes"),len(equipes));d.metric("MRP salvos",len(snapshots))
-    if indicadores:
-        data=df(indicadores);st.markdown(f'<div class="section">{txt("secao_indicadores")}</div>',unsafe_allow_html=True)
-        if "competencia" in data.columns and "valor" in data.columns:
-            data["competencia"]=pd.to_datetime(data["competencia"],errors="coerce");chart=data.dropna(subset=["competencia"]).pivot_table(index="competencia",columns="indicador",values="valor",aggfunc="last")
-            if not chart.empty:st.line_chart(chart)
-        st.dataframe(data,use_container_width=True,hide_index=True)
-    else:st.info(txt("mensagem_sem_indicadores"))
-    with st.expander(txt("diagnostico")):st.write({"Supabase":"conectado","indicadores":len(indicadores),"colaboradores":len(colaboradores),"equipes":len(equipes),"histórico":len(historico),"MRP":len(snapshots)})
-
-elif pagina=="indicadores":
+if pagina=="indicadores":
     indicadores=rows("almox_indicadores",order="competencia")
     render_indicadores(indicadores)
 elif pagina=="historico":
@@ -512,8 +499,8 @@ elif pagina=="configuracoes":
     st.markdown(f'<div class="section">{txt("secao_configuracoes")}</div>',unsafe_allow_html=True);st.write("As configurações ficam salvas no Supabase e são carregadas novamente quando o aplicativo abre.")
     st.markdown("### Personalização de textos e fontes");novo_textos=textos.copy();novo_fontes=fontes.copy();a,b=st.columns(2)
     with a:
-        for _id,_rot in [("dashboard","Dashboard"),("indicadores","Alimentar Indicadores"),("historico","Histórico"),("equipes","Gestão de Equipes"),("configuracoes","Configurações")]:novo_textos["menu_"+_id]=st.text_input("Menu: "+_rot,value=textos["menu_"+_id],key="edit_menu_"+_id)
-        for _id,_rot in [("dashboard","Dashboard"),("indicadores","Alimentar Indicadores"),("historico","Histórico"),("equipes","Gestão de Equipes"),("carreira","Plano de Carreira"),("configuracoes","Configurações")]:novo_textos["titulo_"+_id]=st.text_input("Título: "+_rot,value=textos["titulo_"+_id],key="edit_titulo_"+_id)
+        for _id,_rot in [("indicadores","Alimentar Indicadores"),("historico","Histórico"),("equipes","Gestão de Equipes"),("configuracoes","Configurações")]:novo_textos["menu_"+_id]=st.text_input("Menu: "+_rot,value=textos["menu_"+_id],key="edit_menu_"+_id)
+        for _id,_rot in [("indicadores","Alimentar Indicadores"),("historico","Histórico"),("equipes","Gestão de Equipes"),("carreira","Plano de Carreira"),("configuracoes","Configurações")]:novo_textos["titulo_"+_id]=st.text_input("Título: "+_rot,value=textos["titulo_"+_id],key="edit_titulo_"+_id)
     with b:
         novo_textos["subtitulo_global"]=st.text_input("Subtítulo principal",value=textos["subtitulo_global"],key="edit_subtitulo")
         fi={x:i for i,x in enumerate(FONTES)};novo_fontes["menu"]=st.selectbox("Fonte dos menus",FONTES,index=fi.get(fontes.get("menu"),0));novo_fontes["titulo"]=st.selectbox("Fonte dos títulos",FONTES,index=fi.get(fontes.get("titulo"),0));novo_fontes["subtitulo"]=st.selectbox("Fonte dos subtítulos",FONTES,index=fi.get(fontes.get("subtitulo"),0))
