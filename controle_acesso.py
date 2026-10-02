@@ -10,7 +10,6 @@ from supabase import Client, create_client
 PROJECT_URL = "https://cuixazpxkvniqldmmnth.supabase.co"
 
 MODULOS = {
-    "dashboard": "Dashboard",
     "indicadores": "Alimentar Indicadores",
     "historico": "Histórico",
     "equipes": "Gestão de Equipes",
@@ -23,7 +22,6 @@ PERFIS_PADRAO = {
         modulo: {"ver": True, "editar": True} for modulo in MODULOS
     },
     "GESTOR": {
-        "dashboard": {"ver": True, "editar": False},
         "indicadores": {"ver": True, "editar": True},
         "historico": {"ver": True, "editar": False},
         "equipes": {"ver": True, "editar": True},
@@ -31,7 +29,6 @@ PERFIS_PADRAO = {
         "configuracoes": {"ver": False, "editar": False},
     },
     "OPERACIONAL": {
-        "dashboard": {"ver": True, "editar": False},
         "indicadores": {"ver": True, "editar": True},
         "historico": {"ver": True, "editar": False},
         "equipes": {"ver": False, "editar": False},
@@ -39,7 +36,6 @@ PERFIS_PADRAO = {
         "configuracoes": {"ver": False, "editar": False},
     },
     "CONSULTA": {
-        "dashboard": {"ver": True, "editar": False},
         "indicadores": {"ver": True, "editar": False},
         "historico": {"ver": True, "editar": False},
         "equipes": {"ver": False, "editar": False},
