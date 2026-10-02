@@ -79,7 +79,17 @@ def _num_series(series):
 
 
 def _file_hash(uploaded):
-    data = uploaded.getvalue()
+    # Arquivos manuais chegam como UploadedFile/BytesIO; pela Central SETTA,
+    # o Relatório MRP chega já convertido em DataFrame.
+    if isinstance(uploaded, pd.DataFrame):
+        data = uploaded.to_json(
+            orient="table",
+            date_format="iso",
+            force_ascii=False,
+            index=False,
+        ).encode("utf-8")
+    else:
+        data = uploaded.getvalue()
     return hashlib.sha256(data).hexdigest(), len(data)
 
 
