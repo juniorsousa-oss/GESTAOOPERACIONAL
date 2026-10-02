@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from typing import Any
 
@@ -66,6 +67,34 @@ def get_client() -> Client:
             "Não foi possível inicializar o cliente Supabase. "
             "Verifique SUPABASE_URL e SUPABASE_KEY nos Secrets do Streamlit."
         ) from exc
+
+
+def get_setta_visual_config() -> dict[str, Any]:
+    """Lê somente a identidade visual global da Central SETTA."""
+    try:
+        response = get_client().functions.invoke(
+            "setta-data-api",
+            invoke_options={
+                "body": {
+                    "action": "visual_get",
+                    "payload": {"app_key": "setta_global"},
+                }
+            },
+        )
+        payload = getattr(response, "data", response)
+        if isinstance(payload, (bytes, bytearray)):
+            payload = json.loads(bytes(payload).decode("utf-8"))
+        elif isinstance(payload, str):
+            payload = json.loads(payload)
+
+        if not isinstance(payload, dict) or payload.get("ok") is False:
+            return {}
+
+        data = payload.get("data", payload)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        # A identidade visual não pode impedir o app de abrir.
+        return {}
 
 
 def select_rows(
