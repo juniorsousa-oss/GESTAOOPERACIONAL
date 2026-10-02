@@ -35,13 +35,30 @@ if _import_anchor not in _source:
     raise RuntimeError("Ponto de importação do controle de acesso não encontrado.")
 _source = _source.replace(_import_anchor, _import_anchor + _access_import, 1)
 
+_visual_import_anchor = "from supabase_client import get_client\n"
+_visual_import = "from supabase_client import get_client, get_setta_visual_config\n"
+if _visual_import_anchor not in _source:
+    raise RuntimeError("Importação do cliente Supabase não encontrada.")
+_source = _source.replace(_visual_import_anchor, _visual_import, 1)
+
 _page_config_anchor = (
     'st.set_page_config(page_title="GESTÃO | SETTA", page_icon="assets/mrp_setta_icon.png", '
     'layout="wide", initial_sidebar_state="expanded")\n'
 )
 if _page_config_anchor not in _source:
     raise RuntimeError("Configuração principal do Streamlit não encontrada.")
-_page_config_login = 'st.set_page_config(page_title="GESTÃO | SETTA", page_icon="assets/mrp_setta_icon.png", layout="wide")\n'
+_page_config_login = '''_setta_visual=get_setta_visual_config()
+_setta_page_icon="📡"
+try:
+    _setta_favicon_data=str(_setta_visual.get("favicon_data") or "").strip()
+    if _setta_favicon_data:
+        _setta_favicon_raw=base64.b64decode(_setta_favicon_data,validate=True)
+        _setta_page_icon=Image.open(BytesIO(_setta_favicon_raw))
+        _setta_page_icon.load()
+except Exception:
+    _setta_page_icon="📡"
+st.set_page_config(page_title="GESTÃO | SETTA",page_icon=_setta_page_icon,layout="wide")
+'''
 _source = _source.replace(
     _page_config_anchor,
     _page_config_login + "\n_acesso_client,_acesso_perfil=render_login()\n",
