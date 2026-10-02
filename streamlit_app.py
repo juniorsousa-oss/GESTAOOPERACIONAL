@@ -48,9 +48,9 @@ _source = _source.replace(
     1,
 )
 
-_old_paginas = 'paginas_ids=["dashboard","indicadores","historico","equipes","configuracoes"]'
+_old_paginas = 'paginas_ids=["indicadores","historico","equipes","configuracoes"]'
 _new_paginas = (
-    'paginas_ids=[_id for _id in ["dashboard","indicadores","historico","equipes","configuracoes"] '
+    'paginas_ids=[_id for _id in ["indicadores","historico","equipes","configuracoes"] '
     'if permissao(_acesso_perfil,_id,"ver")]'
 )
 if _old_paginas not in _source:
@@ -58,7 +58,7 @@ if _old_paginas not in _source:
 _source = _source.replace(_old_paginas, _new_paginas, 1)
 
 _old_carreira = 'if st.session_state.pagina=="carreira":st.session_state.pagina="equipes"\nwith st.sidebar:'
-_new_carreira = '''if st.session_state.pagina=="carreira":st.session_state.pagina="equipes"
+_new_carreira = '''if st.session_state.pagina in ("carreira","dashboard"):st.session_state.pagina="equipes"
 if not paginas_ids:
     st.error("Seu usuário não possui nenhuma aba liberada neste aplicativo.")
     st.stop()
