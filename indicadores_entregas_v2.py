@@ -335,8 +335,10 @@ def calcular_entregas_v2(
         periodo_fim = competencia
         status_competencia = "FECHADO"
     else:
-        periodo_fim = data_registro if data_registro == competencia else data_registro - timedelta(days=1)
-        status_competencia = "FECHADO" if periodo_fim == competencia else "PARCIAL"
+        # O mês corrente permanece PARCIAL até virar o mês seguinte.
+        # Assim, atualizações feitas no próprio último dia ainda podem entrar no fechamento.
+        periodo_fim = data_registro - timedelta(days=1)
+        status_competencia = "PARCIAL"
 
     if periodo_fim < periodo_inicio:
         raise ValueError("Ainda não há dia encerrado para calcular a competência atual.")
@@ -725,7 +727,7 @@ def _excel_auditoria(resultado, meta):
     ]
     metodologia = [
         ["ETAPA", "REGRA DE NEGÓCIO"],
-        ["Período", "Competência mensal. Mês encerrado usa do dia 1 ao último dia; mês atual usa do dia 1 ao último dia encerrado e fecha definitivamente no último dia do mês."],
+        ["Período", "Competência mensal. Mês encerrado usa do dia 1 ao último dia; mês atual usa do dia 1 ao último dia encerrado. Ao virar o mês, a competência anterior é recalculada até o último dia, marcada como FECHADO e travada."],
         ["Data CM", "FOR-022, aba Datas esperadas: OP em A e Separação em V. Se a OP repetir, usa a maior data que esteja dentro do período analisado."],
         ["Fonte mestre", "Relatório Geral. A auditoria preserva as linhas originais e adiciona as camadas de tratamento."],
         ["Consolidação", "Mesmo Projeto + Código + Data de Solicitação representa uma solicitação; as quantidades das linhas são somadas."],
@@ -1046,6 +1048,6 @@ def render_alimentacao_entregas_v2(indicadores):
         )
         st.caption(
             "Gravação automática ativa: durante o mês, o mesmo registro da competência é atualizado. "
-            "Ao fechar o mês, ele recebe status FECHADO e não pode mais ser sobrescrito pela rotina automática."
+            "Ao virar o mês, a competência anterior é recalculada até o último dia, recebe status FECHADO e não pode mais ser sobrescrita pela rotina automática."
         )
 
