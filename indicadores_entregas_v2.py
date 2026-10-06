@@ -875,13 +875,19 @@ def _salvar(resultado, meta):
 def render_alimentacao_entregas_v2(indicadores):
     hoje = _agora_local().date()
     competencia_atual = _ultimo_dia_mes(hoje)
-    periodo_fim_atual = hoje if hoje == competencia_atual else hoje - timedelta(days=1)
+    periodo_fim_atual = hoje - timedelta(days=1)
+    tem_periodo_atual = periodo_fim_atual.month == hoje.month
 
     with st.expander("ALIMENTAR · ENTREGAS NO PRAZO / OTIF ALMOX", expanded=False):
+        periodo_txt = (
+            f"01/{hoje.strftime('%m/%Y')} a {periodo_fim_atual.strftime('%d/%m/%Y')}"
+            if tem_periodo_atual
+            else "ainda sem dia encerrado neste mês"
+        )
         st.caption(
             f"Competência atual: {competencia_atual.strftime('%d/%m/%Y')} · "
-            f"Período em acompanhamento: 01/{hoje.strftime('%m/%Y')} a {periodo_fim_atual.strftime('%d/%m/%Y')} · "
-            "o mês é atualizado com as bases e fica travado quando fecha."
+            f"Período em acompanhamento: {periodo_txt} · "
+            "o mês é atualizado com as bases e fica travado após o fechamento."
         )
 
         fonte = st.radio(
@@ -964,6 +970,13 @@ def render_alimentacao_entregas_v2(indicadores):
 
         if st.session_state.get("otif_fechamento_msg"):
             st.info(st.session_state["otif_fechamento_msg"])
+
+        if not tem_periodo_atual:
+            st.info(
+                f"A competência {competencia_atual.strftime('%m/%Y')} ainda não possui dia encerrado. "
+                "O mês anterior já foi verificado para fechamento automático."
+            )
+            return
 
         m1, m2 = st.columns([1, 1])
         with m1:
