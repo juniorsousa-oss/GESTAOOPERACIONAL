@@ -14,7 +14,7 @@ from supabase_client import get_client
 
 SOURCE_KEYS_OTIF = ("relatorio_geral", "for022", "cadastros")
 DERIVED_KEY_OTIF = "relatorio_mrp"
-SOURCE_KEY_ACURACIA = "movimentacao"
+SOURCE_KEYS_ACURACIA = ("analitico", "movimentacao")
 
 
 def _response_data(response: Any) -> Any:
@@ -343,46 +343,47 @@ def rotulo_fonte(meta: dict | None) -> str:
 def status_acuracia_central() -> dict:
     resp = central_api_call(
         "source_status",
-        {"keys": [SOURCE_KEY_ACURACIA]},
+        {"keys": list(SOURCE_KEYS_ACURACIA)},
     )
     fontes = _meta_map(resp.get("data") or [], "source_key")
-    meta = fontes.get(SOURCE_KEY_ACURACIA) or {}
     return {
-        "source": meta,
-        "ready": bool(meta.get("available")),
+        "sources": fontes,
+        "ready": all(bool((fontes.get(k) or {}).get("available")) for k in SOURCE_KEYS_ACURACIA),
     }
 
 
-def carregar_movimentacao_central() -> dict:
+def carregar_acuracia_central() -> dict:
     state = status_acuracia_central()
-    meta = state.get("source") or {}
+    fontes = state.get("sources") or {}
     if not state.get("ready"):
-        raise RuntimeError("Base MOVIMENTAÇÃO indisponível na Central SETTA.")
+        ausentes = [k for k in SOURCE_KEYS_ACURACIA if not bool((fontes.get(k) or {}).get("available"))]
+        raise RuntimeError("Base(s) indisponível(is) na Central SETTA: " + ", ".join(ausentes))
 
-    source = _download_preferred_source(
-        SOURCE_KEY_ACURACIA,
-        int(meta.get("version") or 0),
-        str(meta.get("last_update_at") or meta.get("updated_at") or ""),
-    )
-    fingerprint = json.dumps(
-        {
-            "source_key": SOURCE_KEY_ACURACIA,
+    bundle = {}
+    fp = {}
+    for key in SOURCE_KEYS_ACURACIA:
+        meta = fontes.get(key) or {}
+        bundle[key] = _download_preferred_source(
+            key,
+            int(meta.get("version") or 0),
+            str(meta.get("last_update_at") or meta.get("updated_at") or ""),
+        )
+        fp[key] = {
             "version": int(meta.get("version") or 0),
-            "updated_at": str(
-                meta.get("last_update_at")
-                or meta.get("updated_at")
-                or ""
-            ),
+            "updated_at": str(meta.get("last_update_at") or meta.get("updated_at") or ""),
             "rows_count": meta.get("rows_count"),
-        },
-        ensure_ascii=False,
-        sort_keys=True,
-        default=str,
-        separators=(",", ":"),
-    )
+        }
+
     return {
-        "movimentacao": source,
+        "analitico": bundle["analitico"],
+        "movimentacao": bundle["movimentacao"],
         "status": state,
-        "fingerprint": fingerprint,
+        "fingerprint": json.dumps(
+            fp,
+            ensure_ascii=False,
+            sort_keys=True,
+            default=str,
+            separators=(",", ":"),
+        ),
     }
 
