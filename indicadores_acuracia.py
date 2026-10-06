@@ -22,7 +22,7 @@ from supabase_client import get_client
 
 INDICADOR = "ACURÁCIA DE ESTOQUE"
 TZ_APP = ZoneInfo("America/Sao_Paulo")
-LOGIC_VERSION = "2026-10-06-acuracia-analitico-ajustes-s2-v4"
+LOGIC_VERSION = "2026-10-06-acuracia-analitico-ajustes-s2-v5"
 AJUSTES_TESA = {"020", "520"}
 
 
@@ -208,7 +208,12 @@ def _meta_mensal(data_ref: date) -> float:
     return round(95.50 + meses * 0.50, 2)
 
 
-def calcular_acuracia_estoque(analitico_source, movimentacao_source, hoje: date | None = None) -> list[dict]:
+def calcular_acuracia_estoque(
+    analitico_source,
+    movimentacao_source,
+    hoje: date | None = None,
+    movimentacao_nome: str = "",
+) -> list[dict]:
     hoje = hoje or _agora_local().date()
     base = _base_s2_analitico(analitico_source)
     materiais_base = int(base["materiais_s2_com_saldo"])
@@ -281,7 +286,15 @@ def calcular_acuracia_estoque(analitico_source, movimentacao_source, hoje: date 
         work["_periodo"] = work["_data"].dt.to_period("M")
         grupos = list(work.groupby("_periodo", sort=True))
     else:
-        grupos = [(pd.Period(hoje, freq="M"), work)]
+        nome = str(movimentacao_nome or "")
+        match = re.search(r"(20\d{2})[-_](0?[1-9]|1[0-2])", nome)
+        if match:
+            ano_ref = int(match.group(1))
+            mes_ref = int(match.group(2))
+            periodo_ref = pd.Period(f"{ano_ref:04d}-{mes_ref:02d}", freq="M")
+        else:
+            periodo_ref = pd.Period(hoje, freq="M")
+        grupos = [(periodo_ref, work)]
 
     resultados: list[dict] = []
     for periodo, part in grupos:
@@ -451,9 +464,11 @@ def render_alimentacao_acuracia(indicadores):
 
         if session_fp != fingerprint:
             try:
+                mov_meta = ((bundle.get("status") or {}).get("sources") or {}).get("movimentacao") or {}
                 resultados = calcular_acuracia_estoque(
                     bundle["analitico"],
                     bundle["movimentacao"],
+                    movimentacao_nome=str(mov_meta.get("last_file_name") or ""),
                 )
                 gravados = salvar_competencias_acuracia(resultados)
                 st.session_state["acuracia_estoque_resultados"] = gravados
