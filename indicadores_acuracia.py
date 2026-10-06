@@ -22,7 +22,7 @@ from supabase_client import get_client
 
 INDICADOR = "ACURÁCIA DE ESTOQUE"
 TZ_APP = ZoneInfo("America/Sao_Paulo")
-LOGIC_VERSION = "2026-10-06-acuracia-analitico-ajustes-s2-v5"
+LOGIC_VERSION = "2026-10-06-acuracia-analitico-ajustes-s2-v6"
 AJUSTES_TESA = {"020", "520"}
 
 
@@ -138,50 +138,21 @@ def _normalizar_codigo(value) -> str:
 
 
 def _base_s2_analitico(source) -> dict:
-    # O Analítico oficial SETTA possui uma linha inicial e cabeçalho na linha 2.
+    # O relatório ANALÍTICO consumido pela Central/Inventário já é a origem
+    # de estoque do S2. O layout oficial é:
+    # A = código, D = descrição, H = saldo/quantidade, K = valor.
+    # Não tentamos inferir "armazém" por nomes genéricos como LOCAL, pois isso
+    # pode capturar campos que não representam o depósito e zerar a base.
     df = _read_source(source, header=1)
     if df.empty:
         raise ValueError("A base ANALÍTICO está vazia.")
+    if df.shape[1] < 8:
+        raise ValueError("ANALÍTICO sem as colunas mínimas esperadas até H.")
 
-    # O layout oficial usado pelo Inventário Rotativo possui:
-    # A = código e H = saldo/quantidade. Tentamos o cabeçalho primeiro e
-    # preservamos essas posições como fallback para o relatório oficial.
-    col_codigo = _localizar_coluna(
-        df,
-        {"CODIGO", "CÓDIGO", "COD MATERIAL", "CODIGO MATERIAL", "PRODUTO", "COD PRODUTO"},
-        obrigatoria=False,
-    )
-    col_saldo = _localizar_coluna(
-        df,
-        {"SALDO", "QUANTIDADE", "QTD", "QTD ANALITICO", "QTD ANALÍTICO", "SALDO ATUAL"},
-        obrigatoria=False,
-    )
-    col_armazem = _localizar_coluna(
-        df,
-        {"ARMAZEM", "ARMAZÉM", "LOCAL", "COD ARMAZEM", "CÓD ARMAZÉM"},
-        obrigatoria=False,
-    )
-
-    if col_codigo is None:
-        if df.shape[1] < 1:
-            raise ValueError("ANALÍTICO sem coluna de código.")
-        col_codigo = df.columns[0]
-    if col_saldo is None:
-        if df.shape[1] < 8:
-            raise ValueError("ANALÍTICO sem a coluna H de saldo/quantidade.")
-        col_saldo = df.columns[7]
+    col_codigo = df.columns[0]   # A
+    col_saldo = df.columns[7]    # H
 
     work = df.copy()
-    if col_armazem is not None:
-        armazem = work[col_armazem].fillna("").astype(str).str.strip().str.upper()
-        work = work[armazem.eq("S2")].copy()
-        escopo = f"Filtro {col_armazem} = S2"
-    else:
-        # O ANALÍTICO consumido pelo Inventário Rotativo já é utilizado sem
-        # filtro adicional de armazém. Quando o campo não existe, tratamos a
-        # própria origem como relatório previamente emitido para o S2.
-        escopo = "Relatório ANALÍTICO sem coluna de armazém; origem considerada previamente filtrada para S2"
-
     work["_codigo"] = work[col_codigo].map(_normalizar_codigo)
     work["_saldo"] = work[col_saldo].map(_num)
     work = work[work["_codigo"].ne("")].copy()
@@ -192,12 +163,12 @@ def _base_s2_analitico(source) -> dict:
     return {
         "materiais_s2_com_saldo": int(com_saldo["_codigo"].nunique()),
         "linhas_analitico_consideradas": int(len(work)),
+        "codigos_analitico_distintos": int(por_codigo["_codigo"].nunique()),
         "coluna_codigo": str(col_codigo),
         "coluna_saldo": str(col_saldo),
-        "coluna_armazem": str(col_armazem or ""),
-        "escopo_s2": escopo,
+        "coluna_armazem": "",
+        "escopo_s2": "ANALÍTICO oficial do S2 · código A · saldo H",
     }
-
 
 def _meta_mensal(data_ref: date) -> float:
     # Referência validada: AGO/2026 = 95,50%.
