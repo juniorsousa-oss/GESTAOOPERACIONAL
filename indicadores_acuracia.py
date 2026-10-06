@@ -22,7 +22,7 @@ from supabase_client import get_client
 
 INDICADOR = "ACURÁCIA DE ESTOQUE"
 TZ_APP = ZoneInfo("America/Sao_Paulo")
-LOGIC_VERSION = "2026-10-06-acuracia-analitico-ajustes-s2-v3"
+LOGIC_VERSION = "2026-10-06-acuracia-analitico-ajustes-s2-v4"
 AJUSTES_TESA = {"020", "520"}
 
 
@@ -73,12 +73,35 @@ def _read_source(source, header: int = 0) -> pd.DataFrame:
     return pd.read_excel(source, sheet_name=0, header=header, dtype=str)
 
 
+def _compact(value) -> str:
+    return re.sub(r"[^A-Z0-9]+", "", _normalizar_cabecalho(value))
+
+
 def _localizar_coluna(df: pd.DataFrame, aliases: set[str], obrigatoria: bool = True) -> str | None:
     norm = {_normalizar_cabecalho(col): col for col in df.columns}
+    compact = {_compact(col): col for col in df.columns}
+
     for alias in aliases:
         key = _normalizar_cabecalho(alias)
         if key in norm:
             return norm[key]
+        ckey = _compact(alias)
+        if ckey in compact:
+            return compact[ckey]
+
+    # Variações comuns do Protheus: T.M., Cod. Armazem, Data Movimentação etc.
+    alias_compact = {_compact(alias) for alias in aliases}
+    for ckey, original in compact.items():
+        if "TESA" in alias_compact and "TESA" in ckey:
+            return original
+        if "TM" in alias_compact and ckey in {"TM", "TIPOMOV", "TIPOMOVIMENTO", "TIPOMOVIMENTACAO"}:
+            return original
+        if "ARMAZEM" in alias_compact and "ARMAZEM" in ckey:
+            return original
+        if any(x.startswith("DATA") or "EMISSAO" in x for x in alias_compact):
+            if "EMISSAO" in ckey or ("DATA" in ckey and ("MOV" in ckey or ckey == "DATA")):
+                return original
+
     if obrigatoria:
         raise ValueError(
             "Não foi possível localizar uma das colunas esperadas: "
@@ -177,8 +200,12 @@ def _base_s2_analitico(source) -> dict:
 
 
 def _meta_mensal(data_ref: date) -> float:
-    # Histórico oficial: JAN = 92,00% e evolução de +0,50 p.p. ao mês.
-    return round(92.0 + (int(data_ref.month) - 1) * 0.5, 2)
+    # Referência validada: AGO/2026 = 95,50%.
+    # A partir daí a meta cresce continuamente +0,50 p.p. por competência,
+    # inclusive na virada do ano.
+    base = date(2026, 8, 1)
+    meses = (data_ref.year - base.year) * 12 + (data_ref.month - base.month)
+    return round(95.50 + meses * 0.50, 2)
 
 
 def calcular_acuracia_estoque(analitico_source, movimentacao_source, hoje: date | None = None) -> list[dict]:
@@ -188,41 +215,50 @@ def calcular_acuracia_estoque(analitico_source, movimentacao_source, hoje: date 
     if materiais_base <= 0:
         raise ValueError("Nenhum código distinto com saldo positivo foi encontrado no armazém S2.")
 
-    # MOVIMENTAÇÃO pode vir com cabeçalho na linha 1 ou 2 conforme a emissão do Protheus.
-    mov = _read_source(movimentacao_source, header=0)
-    col_tesa = _localizar_coluna(
-        mov,
-        {"TESA", "TM", "TIPO MOVIMENTACAO", "TIPO DE MOVIMENTACAO"},
-        obrigatoria=False,
-    )
-    if col_tesa is None:
-        mov = _read_source(movimentacao_source, header=1)
-        col_tesa = _localizar_coluna(
-            mov,
-            {"TESA", "TM", "TIPO MOVIMENTACAO", "TIPO DE MOVIMENTACAO"},
+    # O Protheus pode deslocar o cabeçalho e também variar TESA como T.M./TM.
+    # Procuramos nas primeiras linhas até encontrar simultaneamente tipo de
+    # movimentação e armazém, evitando depender de uma posição fixa.
+    mov = pd.DataFrame()
+    col_tesa = None
+    col_armazem_mov = None
+    header_mov = None
+    for header_idx in range(0, 7):
+        tentativa = _read_source(movimentacao_source, header=header_idx)
+        if tentativa.empty:
+            continue
+        tentativa_tesa = _localizar_coluna(
+            tentativa,
+            {"TESA", "TM", "T.M.", "T.M", "TES", "TIPO MOV", "TIPO MOV.", "TIPO MOVIMENTO", "TIPO MOVIMENTACAO", "TIPO DE MOVIMENTACAO"},
             obrigatoria=False,
         )
+        tentativa_armazem = _localizar_coluna(
+            tentativa,
+            {
+                "ARMAZEM", "ARMAZÉM", "LOCAL", "COD ARMAZEM", "CÓD ARMAZÉM",
+                "COD. ARMAZEM", "COD. ARMAZÉM", "ARMAZEM ORIGEM", "ARMAZÉM ORIGEM",
+                "LOCAL ORIGEM",
+            },
+            obrigatoria=False,
+        )
+        if tentativa_tesa is not None and tentativa_armazem is not None:
+            mov = tentativa
+            col_tesa = tentativa_tesa
+            col_armazem_mov = tentativa_armazem
+            header_mov = header_idx
+            break
 
     if mov.empty:
         raise ValueError("A base MOVIMENTAÇÃO está vazia.")
     if col_tesa is None:
-        raise ValueError("Não foi possível localizar a coluna TESA/TM na MOVIMENTAÇÃO.")
+        raise ValueError("Não foi possível localizar a coluna TESA/T.M./TM na MOVIMENTAÇÃO.")
+    if col_armazem_mov is None:
+        raise ValueError("Não foi possível localizar a coluna de armazém na MOVIMENTAÇÃO para aplicar o filtro S2.")
 
     col_data = _localizar_coluna(
         mov,
         {"EMISSAO", "EMISSÃO", "DATA EMISSAO", "DATA DE EMISSAO", "DATA", "DT MOVIMENTACAO", "DATA MOVIMENTACAO"},
         obrigatoria=False,
     )
-    col_armazem_mov = _localizar_coluna(
-        mov,
-        {
-            "ARMAZEM", "ARMAZÉM", "LOCAL", "COD ARMAZEM", "CÓD ARMAZÉM",
-            "ARMAZEM ORIGEM", "ARMAZÉM ORIGEM", "LOCAL ORIGEM",
-        },
-        obrigatoria=False,
-    )
-    if col_armazem_mov is None:
-        raise ValueError("Não foi possível localizar a coluna de armazém na MOVIMENTAÇÃO para aplicar o filtro S2.")
 
     work = mov.copy()
     work["_tesa"] = work[col_tesa].map(_normalizar_tesa)
@@ -285,6 +321,7 @@ def calcular_acuracia_estoque(analitico_source, movimentacao_source, hoje: date 
             "meta": _meta_mensal(inicio),
             "materiais_s2_com_saldo": materiais_base,
             "ajustes_020_520": ajustes,
+            "cabecalho_movimentacao_linha": int(header_mov) + 1 if header_mov is not None else None,
             "coluna_tesa": str(col_tesa),
             "coluna_armazem_movimentacao": str(col_armazem_mov),
             "armazem_movimentacao": "S2",
@@ -409,7 +446,7 @@ def render_alimentacao_acuracia(indicadores):
             st.error(f"Não foi possível carregar as bases da acurácia: {exc}")
             return
 
-        fingerprint = str(bundle.get("fingerprint") or "")
+        fingerprint = LOGIC_VERSION + "|" + str(bundle.get("fingerprint") or "")
         session_fp = st.session_state.get("acuracia_estoque_fingerprint")
 
         if session_fp != fingerprint:
