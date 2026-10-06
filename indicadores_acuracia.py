@@ -22,7 +22,7 @@ from supabase_client import get_client
 
 INDICADOR = "ACURÁCIA DE ESTOQUE"
 TZ_APP = ZoneInfo("America/Sao_Paulo")
-LOGIC_VERSION = "2026-10-06-acuracia-tm-s2-usuario-v8"
+LOGIC_VERSION = "2026-10-06-acuracia-tm-s2-usuario-auditoria-v9"
 AJUSTES_TESA = {"020", "520"}
 
 
@@ -162,9 +162,18 @@ def _base_s2_analitico(source) -> dict:
     por_codigo = work.groupby("_codigo", as_index=False)["_saldo"].sum()
     com_saldo = por_codigo[por_codigo["_saldo"] > 0].copy()
 
-    base_auditoria = com_saldo.rename(
-        columns={"_codigo": "CODIGO", "_saldo": "SALDO_S2"}
-    ).sort_values("CODIGO").reset_index(drop=True)
+    descricao_por_codigo = (
+        work.assign(_descricao=work[df.columns[3]].fillna("").astype(str).str.strip())
+        .groupby("_codigo", as_index=False)["_descricao"]
+        .first()
+    )
+    base_auditoria = (
+        com_saldo.merge(descricao_por_codigo, on="_codigo", how="left")
+        .rename(columns={"_codigo": "CODIGO", "_descricao": "DESCRICAO", "_saldo": "SALDO_S2"})
+        [["CODIGO", "DESCRICAO", "SALDO_S2"]]
+        .sort_values("CODIGO")
+        .reset_index(drop=True)
+    )
 
     return {
         "materiais_s2_com_saldo": int(com_saldo["_codigo"].nunique()),
@@ -288,11 +297,21 @@ def calcular_acuracia_estoque(
         percentual_ajuste = (ajustes / materiais_base) * 100.0
         acuracia = 100.0 - percentual_ajuste
 
-        audit_cols = [col_tm, col_data, col_usuario, col_armazem]
-        ajuste_auditoria = part[audit_cols].copy()
-        ajuste_auditoria.columns = ["TM", "EMISSAO", "USUARIO", "ARMAZEM"]
-        api_auditoria = api_periodo[audit_cols].copy()
-        api_auditoria.columns = ["TM", "EMISSAO", "USUARIO", "ARMAZEM"]
+        ajuste_auditoria = part[
+            [c for c in mov.columns if c in part.columns]
+        ].copy()
+        ajuste_auditoria["REGRA_TM"] = part["_tm"].values
+        ajuste_auditoria["REGRA_ARMAZEM"] = part["_armazem"].values
+        ajuste_auditoria["REGRA_USUARIO"] = part["_usuario"].values
+        ajuste_auditoria["CLASSIFICACAO_AUDITORIA"] = "AJUSTE VALIDO"
+
+        api_auditoria = api_periodo[
+            [c for c in mov.columns if c in api_periodo.columns]
+        ].copy()
+        api_auditoria["REGRA_TM"] = api_periodo["_tm"].values
+        api_auditoria["REGRA_ARMAZEM"] = api_periodo["_armazem"].values
+        api_auditoria["REGRA_USUARIO"] = api_periodo["_usuario"].values
+        api_auditoria["CLASSIFICACAO_AUDITORIA"] = "EXCLUIDO · USUARIO API"
 
         resultados.append({
             "competencia": competencia.isoformat(),
@@ -403,7 +422,7 @@ def salvar_competencias_acuracia(resultados: list[dict]) -> list[dict]:
             client.table("almox_historico").insert({
                 "tipo": "indicador_acuracia_estoque",
                 "descricao": f"Acurácia {acao}: competência {competencia}",
-                "dados": resultado,
+                "dados": resumo_persistencia,
             }).execute()
         except Exception:
             pass
