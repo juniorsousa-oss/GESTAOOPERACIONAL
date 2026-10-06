@@ -563,6 +563,8 @@ def render_login() -> tuple[Client | None, dict[str, Any] | None]:
         senha = st.text_input("Senha", type="password", placeholder="Digite sua senha", key="acesso_senha_login")
         entrar = st.form_submit_button("ENTRAR", use_container_width=True)
 
+    _habilitar_autofill_login()
+
     if entrar:
         client, erro = autenticar(email, senha)
         if erro:
