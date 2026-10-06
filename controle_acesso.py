@@ -219,16 +219,29 @@ def _habilitar_autofill_login() -> None:
             if (user) {
               user.setAttribute('autocomplete', 'username');
               user.setAttribute('name', 'username');
+              user.setAttribute('id', 'username');
+              user.setAttribute('inputmode', 'email');
               user.setAttribute('autocapitalize', 'none');
+              user.setAttribute('autocorrect', 'off');
               user.setAttribute('spellcheck', 'false');
+              user.setAttribute('aria-label', 'Usuário');
             }
             if (pass) {
               pass.setAttribute('autocomplete', 'current-password');
               pass.setAttribute('name', 'password');
+              pass.setAttribute('id', 'current-password');
+              pass.setAttribute('autocapitalize', 'none');
+              pass.setAttribute('autocorrect', 'off');
+              pass.setAttribute('spellcheck', 'false');
+              pass.setAttribute('aria-label', 'Senha');
             }
 
             const htmlForm = box.querySelector('form') || box.closest('form');
-            if (htmlForm) htmlForm.setAttribute('autocomplete', 'on');
+            if (htmlForm) {
+              htmlForm.setAttribute('autocomplete', 'on');
+              htmlForm.setAttribute('name', 'login');
+              htmlForm.setAttribute('id', 'login-form');
+            }
             return Boolean(user && pass);
           };
 
