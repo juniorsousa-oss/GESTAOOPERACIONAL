@@ -22,7 +22,7 @@ from supabase_client import get_client
 
 INDICADOR = "ACURÁCIA DE ESTOQUE"
 TZ_APP = ZoneInfo("America/Sao_Paulo")
-LOGIC_VERSION = "2026-10-06-acuracia-analitico-ajustes-s2-v7"
+LOGIC_VERSION = "2026-10-06-acuracia-tm-s2-usuario-v8"
 AJUSTES_TESA = {"020", "520"}
 
 
@@ -138,36 +138,38 @@ def _normalizar_codigo(value) -> str:
 
 
 def _base_s2_analitico(source) -> dict:
-    # O relatório ANALÍTICO consumido pela Central/Inventário já é a origem
-    # de estoque do S2. O layout oficial é:
-    # A = código, D = descrição, H = saldo/quantidade, K = valor.
-    # Não tentamos inferir "armazém" por nomes genéricos como LOCAL, pois isso
-    # pode capturar campos que não representam o depósito e zerar a base.
+    # Layout oficial do ANALÍTICO:
+    # A = CODIGO | G = ARMZ | H = SALDO EM ESTOQUE
     df = _read_source(source, header=1)
     if df.empty:
         raise ValueError("A base ANALÍTICO está vazia.")
     if df.shape[1] < 8:
         raise ValueError("ANALÍTICO sem as colunas mínimas esperadas até H.")
 
-    col_codigo = df.columns[0]   # A
-    col_saldo = df.columns[7]    # H
+    col_codigo = df.columns[0]
+    col_armazem = df.columns[6]
+    col_saldo = df.columns[7]
 
     work = df.copy()
     work["_codigo"] = work[col_codigo].map(_normalizar_codigo)
+    work["_armazem"] = work[col_armazem].fillna("").astype(str).str.strip().str.upper()
     work["_saldo"] = work[col_saldo].map(_num)
-    work = work[work["_codigo"].ne("")].copy()
+    work = work[
+        work["_codigo"].ne("")
+        & work["_armazem"].eq("S2")
+    ].copy()
 
     por_codigo = work.groupby("_codigo", as_index=False)["_saldo"].sum()
     com_saldo = por_codigo[por_codigo["_saldo"] > 0].copy()
 
     return {
         "materiais_s2_com_saldo": int(com_saldo["_codigo"].nunique()),
-        "linhas_analitico_consideradas": int(len(work)),
-        "codigos_analitico_distintos": int(por_codigo["_codigo"].nunique()),
+        "linhas_analitico_s2": int(len(work)),
+        "codigos_analitico_s2_distintos": int(por_codigo["_codigo"].nunique()),
         "coluna_codigo": str(col_codigo),
+        "coluna_armazem": str(col_armazem),
         "coluna_saldo": str(col_saldo),
-        "coluna_armazem": "",
-        "escopo_s2": "ANALÍTICO oficial do S2 · código A · saldo H",
+        "escopo_s2": "ANALÍTICO · ARMZ=S2 · saldo > 0 após consolidação por código",
     }
 
 def _meta_mensal(data_ref: date) -> float:
@@ -189,107 +191,64 @@ def calcular_acuracia_estoque(
     base = _base_s2_analitico(analitico_source)
     materiais_base = int(base["materiais_s2_com_saldo"])
     if materiais_base <= 0:
-        raise ValueError("Nenhum código distinto com saldo positivo foi encontrado no armazém S2.")
+        raise ValueError("Nenhum código distinto com saldo positivo foi encontrado no S2.")
 
-    # MOVIMENTAÇÃO: primeiro tenta reconhecer o cabeçalho.
-    # Se o Protheus vier com outro layout, identifica as colunas pelos próprios
-    # valores: presença de 020/520 = tipo de movimento; presença de S2 = armazém.
-    mov = pd.DataFrame()
-    col_tesa = None
-    col_armazem_mov = None
-    col_data = None
-    header_mov = None
-
-    for header_idx in range(0, 7):
-        tentativa = _read_source(movimentacao_source, header=header_idx)
-        if tentativa.empty:
-            continue
-        tentativa_tesa = _localizar_coluna(
-            tentativa,
-            {"TESA", "TM", "T.M.", "T.M", "TES", "TIPO MOV", "TIPO MOV.", "TIPO MOVIMENTO", "TIPO MOVIMENTACAO", "TIPO DE MOVIMENTACAO"},
-            obrigatoria=False,
+    # Layout padrão da MOVIMENTAÇÃO validado:
+    # C = TM | J = EMISSAO | K = USUARIO | L = ARMAZEM
+    mov = _read_source(movimentacao_source, header=0)
+    if mov.empty or mov.shape[1] < 12:
+        raise ValueError(
+            "A fonte MOVIMENTAÇÃO da Central não está no layout padrão esperado "
+            "(C=TM, J=EMISSAO, K=USUARIO, L=ARMAZEM)."
         )
-        tentativa_armazem = _localizar_coluna(
-            tentativa,
-            {"ARMAZEM", "ARMAZÉM", "COD ARMAZEM", "CÓD ARMAZÉM", "COD. ARMAZEM", "COD. ARMAZÉM", "ARMAZEM ORIGEM", "ARMAZÉM ORIGEM"},
-            obrigatoria=False,
+
+    col_tm = mov.columns[2]
+    col_data = mov.columns[9]
+    col_usuario = mov.columns[10]
+    col_armazem = mov.columns[11]
+
+    if _compact(col_tm) not in {"TM", "TESA", "TES"}:
+        raise ValueError(
+            f"Fonte MOVIMENTAÇÃO incompatível: coluna C deveria ser TM e veio '{col_tm}'."
         )
-        if tentativa_tesa is not None and tentativa_armazem is not None:
-            mov = tentativa
-            col_tesa = tentativa_tesa
-            col_armazem_mov = tentativa_armazem
-            col_data = _localizar_coluna(
-                mov,
-                {"EMISSAO", "EMISSÃO", "DATA EMISSAO", "DATA DE EMISSAO", "DATA", "DT MOVIMENTACAO", "DATA MOVIMENTACAO"},
-                obrigatoria=False,
-            )
-            header_mov = header_idx
-            break
-
-    if mov.empty:
-        raw = _read_source(movimentacao_source, header=None)
-        if raw.empty:
-            raise ValueError("A base MOVIMENTAÇÃO está vazia.")
-
-        tesa_scores = {}
-        arm_scores = {}
-        for col in raw.columns:
-            tesa_scores[col] = int(raw[col].map(_normalizar_tesa).isin(AJUSTES_TESA).sum())
-            arm_scores[col] = int(
-                raw[col].fillna("").astype(str).str.strip().str.upper().eq("S2").sum()
-            )
-
-        col_tesa_raw = max(tesa_scores, key=tesa_scores.get)
-        col_arm_raw = max(arm_scores, key=arm_scores.get)
-        if tesa_scores[col_tesa_raw] <= 0:
-            raise ValueError("A MOVIMENTAÇÃO não possui valores 020/520 identificáveis.")
-        if arm_scores[col_arm_raw] <= 0:
-            raise ValueError("A MOVIMENTAÇÃO não possui registros identificáveis do armazém S2.")
-
-        mov = raw.copy()
-        mov["_tesa"] = mov[col_tesa_raw].map(_normalizar_tesa)
-        mov["_armazem_mov"] = mov[col_arm_raw].fillna("").astype(str).str.strip().str.upper()
-        col_tesa = f"COLUNA {int(col_tesa_raw) + 1}"
-        col_armazem_mov = f"COLUNA {int(col_arm_raw) + 1}"
-        col_data = None
-        header_mov = None
+    if "EMISSAO" not in _compact(col_data) and "DATA" not in _compact(col_data):
+        raise ValueError(
+            f"Fonte MOVIMENTAÇÃO incompatível: coluna J deveria ser EMISSAO e veio '{col_data}'."
+        )
+    if "USUARIO" not in _compact(col_usuario):
+        raise ValueError(
+            f"Fonte MOVIMENTAÇÃO incompatível: coluna K deveria ser USUARIO e veio '{col_usuario}'."
+        )
+    if "ARMAZEM" not in _compact(col_armazem) and _compact(col_armazem) != "ARMZ":
+        raise ValueError(
+            f"Fonte MOVIMENTAÇÃO incompatível: coluna L deveria ser ARMAZEM e veio '{col_armazem}'."
+        )
 
     work = mov.copy()
-    if "_tesa" not in work.columns:
-        work["_tesa"] = work[col_tesa].map(_normalizar_tesa)
-    if "_armazem_mov" not in work.columns:
-        work["_armazem_mov"] = work[col_armazem_mov].fillna("").astype(str).str.strip().str.upper()
+    work["_tm"] = work[col_tm].map(_normalizar_tesa)
+    work["_data"] = _to_dates(work[col_data]).dt.normalize()
+    work["_usuario"] = work[col_usuario].fillna("").astype(str).str.strip()
+    work["_usuario_norm"] = work["_usuario"].str.upper()
+    work["_armazem"] = work[col_armazem].fillna("").astype(str).str.strip().str.upper()
 
     work = work[
-        work["_tesa"].isin(AJUSTES_TESA)
-        & work["_armazem_mov"].eq("S2")
+        work["_tm"].isin(AJUSTES_TESA)
+        & work["_armazem"].eq("S2")
+        & work["_usuario"].ne("")
+        & work["_usuario_norm"].ne("API")
+        & work["_data"].notna()
     ].copy()
+
     if work.empty:
-        raise ValueError("Nenhuma movimentação TESA/TM 020 ou 520 do armazém S2 foi encontrada.")
+        raise ValueError(
+            "Nenhuma movimentação válida encontrada: precisa ser TM 020/520, "
+            "ARMAZEM S2 e USUARIO preenchido diferente de API."
+        )
 
-    # Se houver data, apuramos cada competência existente no próprio relatório.
-    # Se a MOVIMENTAÇÃO vier sem data, ela é considerada o relatório do mês
-    # indicado pelo próprio arquivo/fonte e será tratada como competência atual.
-    if col_data is not None:
-        work["_data"] = _to_dates(work[col_data]).dt.normalize()
-        work = work[work["_data"].notna()].copy()
-        if work.empty:
-            raise ValueError("As movimentações 020/520 não possuem datas válidas.")
-        work["_periodo"] = work["_data"].dt.to_period("M")
-        grupos = list(work.groupby("_periodo", sort=True))
-    else:
-        nome = str(movimentacao_nome or "")
-        match = re.search(r"(20\d{2})[-_](0?[1-9]|1[0-2])", nome)
-        if match:
-            ano_ref = int(match.group(1))
-            mes_ref = int(match.group(2))
-            periodo_ref = pd.Period(f"{ano_ref:04d}-{mes_ref:02d}", freq="M")
-        else:
-            periodo_ref = pd.Period(hoje, freq="M")
-        grupos = [(periodo_ref, work)]
-
+    work["_periodo"] = work["_data"].dt.to_period("M")
     resultados: list[dict] = []
-    for periodo, part in grupos:
+
+    for periodo, part in work.groupby("_periodo", sort=True):
         inicio = date(int(periodo.year), int(periodo.month), 1)
         competencia = _ultimo_dia_mes(inicio)
         mes = (int(periodo.year), int(periodo.month))
@@ -297,22 +256,20 @@ def calcular_acuracia_estoque(
         if mes > mes_atual:
             continue
 
-        if col_data is not None:
-            if mes == mes_atual:
-                fim = hoje - timedelta(days=1)
-                if fim < inicio:
-                    continue
-                part = part[part["_data"] <= pd.Timestamp(fim)].copy()
-                status = "PARCIAL"
-            else:
-                fim = competencia
-                part = part[part["_data"] <= pd.Timestamp(fim)].copy()
-                status = "FECHADO"
+        if mes == mes_atual:
+            fim = hoje - timedelta(days=1)
+            if fim < inicio:
+                continue
+            part = part[part["_data"] <= pd.Timestamp(fim)].copy()
+            status = "PARCIAL"
         else:
-            fim = hoje - timedelta(days=1) if mes == mes_atual else competencia
-            status = "PARCIAL" if mes == mes_atual else "FECHADO"
+            fim = competencia
+            part = part[part["_data"] <= pd.Timestamp(fim)].copy()
+            status = "FECHADO"
 
         ajustes = int(len(part))
+        ajustes_020 = int(part["_tm"].eq("020").sum())
+        ajustes_520 = int(part["_tm"].eq("520").sum())
         percentual_ajuste = (ajustes / materiais_base) * 100.0
         acuracia = 100.0 - percentual_ajuste
 
@@ -326,11 +283,14 @@ def calcular_acuracia_estoque(
             "meta": _meta_mensal(inicio),
             "materiais_s2_com_saldo": materiais_base,
             "ajustes_020_520": ajustes,
-            "cabecalho_movimentacao_linha": int(header_mov) + 1 if header_mov is not None else None,
-            "coluna_tesa": str(col_tesa),
-            "coluna_armazem_movimentacao": str(col_armazem_mov),
+            "ajustes_020": ajustes_020,
+            "ajustes_520": ajustes_520,
+            "coluna_tm": str(col_tm),
+            "coluna_data_movimentacao": str(col_data),
+            "coluna_usuario_movimentacao": str(col_usuario),
+            "coluna_armazem_movimentacao": str(col_armazem),
+            "regra_usuario": "USUARIO preenchido e diferente de API",
             "armazem_movimentacao": "S2",
-            "coluna_data_movimentacao": str(col_data or ""),
             "tesa_ajustes": sorted(AJUSTES_TESA),
             "logic_version": LOGIC_VERSION,
             "gerado_em": _agora_local().isoformat(),
@@ -385,7 +345,7 @@ def salvar_competencias_acuracia(resultados: list[dict]) -> list[dict]:
             "unidade": "%",
             "observacao": json.dumps(
                 {
-                    "origem": "analitico_s2_mais_movimentacao_020_520",
+                    "origem": "analitico_s2_mais_tm_020_520_s2_usuario_humano",
                     **resultado,
                 },
                 ensure_ascii=False,
@@ -485,7 +445,7 @@ def render_alimentacao_acuracia(indicadores):
 
         st.caption(
             f"Base: {int(ultimo['materiais_s2_com_saldo']):,} códigos distintos com saldo positivo no S2 · "
-            f"Ajustes: {int(ultimo['ajustes_020_520']):,} movimentações TESA/TM 020 ou 520 também do armazém S2 · "
+            f"Ajustes: {int(ultimo['ajustes_020_520']):,} movimentações TM 020/520 do S2 com USUARIO diferente de API · "
             f"Acurácia = 100% − ({int(ultimo['ajustes_020_520'])} ÷ {int(ultimo['materiais_s2_com_saldo'])} × 100)."
             .replace(",", ".")
         )
