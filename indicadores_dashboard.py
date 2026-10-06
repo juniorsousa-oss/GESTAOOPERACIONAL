@@ -7,6 +7,7 @@ import streamlit as st
 from indicadores_pdf import EXPORT_LAYOUT_VERSION, gerar_pdf_indicadores
 from indicadores_regras import consolidar_ultimo_por_mes, meses_disponiveis, preparar_exportacao, rotulo_mes
 from indicadores_entregas_v2 import render_alimentacao_entregas_v2
+from indicadores_acuracia import render_alimentacao_acuracia
 from indicadores_historico import render_historico_otif
 
 
@@ -191,6 +192,8 @@ def _render_indicator(name, rows, index):
         if name == "ENTREGAS NO PRAZO":
             render_alimentacao_entregas_v2(rows)
             render_historico_otif()
+        elif name == "ACURÁCIA DE ESTOQUE":
+            render_alimentacao_acuracia(rows)
         else:
             with st.expander(f"ALIMENTAR · {name}", expanded=False):
                 st.caption("Estrutura preparada. A lógica de alimentação deste indicador será configurada na próxima etapa.")
