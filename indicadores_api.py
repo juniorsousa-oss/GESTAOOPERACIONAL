@@ -332,7 +332,8 @@ def rotulo_fonte(meta: dict | None) -> str:
         return "INDISPONÍVEL"
     versao = meta.get("version")
     linhas = meta.get("rows_count")
-    partes = ["ATUALIZADA"]
+    status = str(meta.get("status") or "").strip().upper()
+    partes = ["ERRO" if status == "ERRO" else "ATUALIZADA"]
     if versao not in (None, ""):
         partes.append(f"v{int(versao)}")
     if linhas not in (None, ""):
