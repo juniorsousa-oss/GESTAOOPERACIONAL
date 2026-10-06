@@ -11,6 +11,7 @@ for _module_name in (
     "indicadores_pdf",
     "indicadores_regras",
     "indicadores_entregas_v2",
+    "indicadores_acuracia",
     "indicadores_historico",
     "controle_acesso",
 ):
