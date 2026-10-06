@@ -293,10 +293,25 @@ def render_indicadores(indicadores):
 
     try:
         dados_exportacao = preparar_exportacao(indicadores or [], modo_exportacao, mes_exportacao)
+
+        # Trava final: MÊS ESPECÍFICO nunca pode carregar competência posterior
+        # à selecionada, mesmo que alguma rotina anterior devolva dados indevidos.
+        if modo_exportacao == "MÊS ESPECÍFICO" and mes_exportacao:
+            corte_export = pd.Period(str(mes_exportacao), freq="M")
+            dados_filtrados = []
+            for row in dados_exportacao:
+                dt = pd.to_datetime(row.get("competencia"), errors="coerce")
+                if pd.isna(dt):
+                    continue
+                periodo_row = dt.to_period("M")
+                if periodo_row.year == corte_export.year and periodo_row <= corte_export:
+                    dados_filtrados.append(row)
+            dados_exportacao = dados_filtrados
+
         payload_pdf = json.dumps(dados_exportacao, ensure_ascii=False, sort_keys=True, default=str)
         config = st.session_state.get("config") or {}
         imagens_zip = _pdf_indicadores_cache(
-            payload_pdf, EXPORT_LAYOUT_VERSION,
+            payload_pdf, f"{EXPORT_LAYOUT_VERSION}|{modo_exportacao}|{mes_exportacao or 'atual'}",
             config.get("logo_base64"), config.get("logo_mime"),
         )
         sufixo = mes_exportacao if modo_exportacao == "MÊS ESPECÍFICO" and mes_exportacao else "atual"
