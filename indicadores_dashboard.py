@@ -46,6 +46,23 @@ def _month_label(value):
     return f"{meses[d.month-1]}/{d.year}"
 
 
+def _row_month_label(row):
+    label = _month_label(row.get("competencia"))
+    obs = row.get("observacao")
+    if isinstance(obs, str) and obs.strip().startswith("{"):
+        try:
+            obs = json.loads(obs)
+        except Exception:
+            obs = {}
+    if isinstance(obs, dict):
+        status = str(obs.get("status_competencia") or "").upper()
+        if status == "PARCIAL":
+            return f"{label} · PARCIAL"
+        if status == "FECHADO":
+            return f"{label} · FECHADO"
+    return label
+
+
 def _prepare_rows(rows, view):
     ordered = sorted(rows, key=lambda r: pd.to_datetime(r.get("competencia"), errors="coerce"))
     if view != "month" or not ordered:
@@ -70,7 +87,7 @@ def _kpis(rows, selected_index=None):
         diff = valor - meta if valor is not None and meta is not None else None
         status = "Acima da meta" if diff is not None and diff >= 0 else ("Abaixo da meta" if diff is not None else "Sem meta")
         status_cls = "ok" if diff is not None and diff >= 0 else ("bad" if diff is not None else "neutral")
-        selected_label = _month_label(selected.get("competencia"))
+        selected_label = _row_month_label(selected)
     return f'''<div class="ind-kpis">
       <div class="ind-kpi"><div class="ind-kpi-label">RESULTADO SELECIONADO</div><div class="ind-kpi-value">{_pct(valor)}</div><div class="ind-kpi-sub">{selected_label}</div></div>
       <div class="ind-kpi"><div class="ind-kpi-label">META</div><div class="ind-kpi-value">{_pct(meta) if meta is not None else '—'}</div><div class="ind-kpi-sub">Referência do lançamento</div></div>
@@ -90,7 +107,7 @@ def _chart(rows, title, chart_key):
         st.error("Não foi possível carregar o componente gráfico.")
         return None
 
-    labels = [_month_label(r.get("competencia")) for r in rows]
+    labels = [_row_month_label(r) for r in rows]
     values = [float(r.get("valor") or 0) for r in rows]
     metas = [float(r.get("meta") or 0) for r in rows]
 
@@ -145,7 +162,7 @@ def _render_indicator(name, rows, index):
     state_key = f"ind_view_{index}"
     selected_key = f"ind_selected_{index}"
     if state_key not in st.session_state:
-        st.session_state[state_key] = "month" if name == "ENTREGAS NO PRAZO" else "all"
+        st.session_state[state_key] = "month" if name in ("ENTREGAS NO PRAZO", "ACURÁCIA DE ESTOQUE") else "all"
     if selected_key not in st.session_state:
         st.session_state[selected_key] = None
 
@@ -272,7 +289,7 @@ def render_indicadores(indicadores):
             else:
                 st.text_input("MÊS", value="Sem histórico", disabled=True, key="indicadores_export_mes_vazio")
         else:
-            st.text_input("REFERÊNCIA", value="Último fechamento disponível", disabled=True, key="indicadores_export_atual")
+            st.text_input("REFERÊNCIA", value="Última competência disponível (inclui parcial)", disabled=True, key="indicadores_export_atual")
 
     try:
         dados_exportacao = preparar_exportacao(indicadores or [], modo_exportacao, mes_exportacao)
