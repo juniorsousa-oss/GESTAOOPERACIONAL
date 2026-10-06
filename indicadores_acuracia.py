@@ -597,8 +597,54 @@ def render_alimentacao_acuracia(indicadores):
                 st.cache_data.clear()
                 st.rerun()
             except Exception as exc:
-                st.error(f"Não foi possível calcular/gravar a acurácia: {exc}")
-                return
+                erro_auto = str(exc)
+                st.warning(
+                    "A fonte automática MOVIMENTAÇÃO da Central está em um layout incompatível "
+                    "com o relatório padrão do Protheus. O fechamento já validado permanece preservado."
+                )
+                st.caption(f"Diagnóstico técnico: {erro_auto}")
+
+                historico = sorted(
+                    indicadores or [],
+                    key=lambda row: pd.to_datetime(row.get("competencia"), errors="coerce"),
+                )
+                if historico:
+                    salvo = historico[-1]
+                    st.info(
+                        f"Última competência preservada: "
+                        f"{pd.to_datetime(salvo.get('competencia')).strftime('%m/%Y')} · "
+                        f"Acurácia {float(salvo.get('valor') or 0):.2f}% · "
+                        f"Meta {float(salvo.get('meta') or 0):.2f}%."
+                    )
+
+                manual = st.file_uploader(
+                    "MOVIMENTAÇÃO PADRÃO · CONTINGÊNCIA",
+                    type=["xlsx", "xlsm", "xltx", "xls", "csv"],
+                    key="acuracia_movimentacao_manual",
+                    help="Use somente enquanto a fonte MOVIMENTAÇÃO da Central não estiver no padrão C=TM, J=EMISSAO, K=USUARIO, L=ARMAZEM.",
+                )
+                if manual is None:
+                    st.caption(
+                        "Assim que a Central receber novamente o relatório padrão, "
+                        "a atualização volta a ser automática."
+                    )
+                    return
+
+                try:
+                    resultados = calcular_acuracia_estoque(
+                        bundle["analitico"],
+                        manual,
+                        movimentacao_nome=str(getattr(manual, "name", "") or ""),
+                    )
+                    gravados = salvar_competencias_acuracia(resultados)
+                    st.session_state["acuracia_estoque_resultados"] = gravados
+                    st.session_state["acuracia_estoque_fingerprint"] = (
+                        LOGIC_VERSION + "|MANUAL|" + str(getattr(manual, "name", "movimentacao"))
+                    )
+                    st.success("MOVIMENTAÇÃO padrão processada pela contingência manual.")
+                except Exception as manual_exc:
+                    st.error(f"Não foi possível processar o arquivo de contingência: {manual_exc}")
+                    return
 
         gravados = st.session_state.get("acuracia_estoque_resultados") or []
         if not gravados:
