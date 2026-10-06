@@ -92,14 +92,20 @@ def preparar_exportacao(indicadores, modo="ATUAL", periodo=None):
     """
     Prepara a série mensal para exportação.
 
-    O mês escolhido é o mês de corte, e não o único mês mostrado:
-    - ATUAL: janeiro até o último mês disponível do ano mais recente;
-    - MÊS ESPECÍFICO: janeiro até o mês selecionado;
+    Regras:
+    - ATUAL: janeiro até a última competência disponível do ano mais recente;
+    - MÊS ESPECÍFICO: janeiro até o mês selecionado, inclusive;
+    - nunca permite competência posterior ao corte escolhido;
     - em cada mês vale somente o último lançamento, nunca a média.
     """
     corte = _periodo_corte(indicadores, modo, periodo)
     if corte is None:
         return []
+
+    modo_especifico = (
+        str(modo).upper().startswith("MÊS")
+        or str(modo).upper().startswith("MES")
+    )
 
     grupos = {}
     for row in indicadores or []:
@@ -117,11 +123,19 @@ def preparar_exportacao(indicadores, modo="ATUAL", periodo=None):
             dt = pd.to_datetime(row.get("competencia"), errors="coerce")
             if pd.isna(dt):
                 continue
+
             periodo_row = dt.to_period("M")
-            if periodo_row.year == corte.year and periodo_row <= corte:
-                item = dict(row)
-                item["indicador"] = nome
-                saida.append(item)
+
+            # A exportação sempre fica restrita ao ano do corte e jamais
+            # inclui uma competência posterior ao mês selecionado.
+            if periodo_row.year != corte.year:
+                continue
+            if periodo_row > corte:
+                continue
+
+            item = dict(row)
+            item["indicador"] = nome
+            saida.append(item)
 
     saida.sort(
         key=lambda r: (
@@ -129,4 +143,17 @@ def preparar_exportacao(indicadores, modo="ATUAL", periodo=None):
             pd.to_datetime(r.get("competencia"), errors="coerce"),
         )
     )
+
+    # Trava defensiva adicional para MÊS ESPECÍFICO.
+    if modo_especifico:
+        validada = []
+        for row in saida:
+            dt = pd.to_datetime(row.get("competencia"), errors="coerce")
+            if pd.isna(dt):
+                continue
+            pr = dt.to_period("M")
+            if pr.year == corte.year and pr <= corte:
+                validada.append(row)
+        saida = validada
+
     return saida
