@@ -65,12 +65,12 @@ def _to_dates(series: pd.Series) -> pd.Series:
         return pd.to_datetime(series, dayfirst=True, errors="coerce")
 
 
-def _read_source(source) -> pd.DataFrame:
+def _read_source(source, header: int = 0) -> pd.DataFrame:
     if isinstance(source, dict) and str(source.get("format") or "") == "SETTA_SOURCE_V1":
-        return source_frame(source, sheet_name=0, header=0, dtype=str)
+        return source_frame(source, sheet_name=0, header=header, dtype=str)
     if hasattr(source, "seek"):
         source.seek(0)
-    return pd.read_excel(source, sheet_name=0, dtype=str)
+    return pd.read_excel(source, sheet_name=0, header=header, dtype=str)
 
 
 def _localizar_coluna(df: pd.DataFrame, aliases: set[str], obrigatoria: bool = True) -> str | None:
@@ -115,7 +115,8 @@ def _normalizar_codigo(value) -> str:
 
 
 def _base_s2_analitico(source) -> dict:
-    df = _read_source(source)
+    # O Analítico oficial SETTA possui uma linha inicial e cabeçalho na linha 2.
+    df = _read_source(source, header=1)
     if df.empty:
         raise ValueError("A base ANALÍTICO está vazia.")
 
@@ -187,14 +188,26 @@ def calcular_acuracia_estoque(analitico_source, movimentacao_source, hoje: date 
     if materiais_base <= 0:
         raise ValueError("Nenhum código distinto com saldo positivo foi encontrado no armazém S2.")
 
-    mov = _read_source(movimentacao_source)
-    if mov.empty:
-        raise ValueError("A base MOVIMENTAÇÃO está vazia.")
-
+    # MOVIMENTAÇÃO pode vir com cabeçalho na linha 1 ou 2 conforme a emissão do Protheus.
+    mov = _read_source(movimentacao_source, header=0)
     col_tesa = _localizar_coluna(
         mov,
         {"TESA", "TM", "TIPO MOVIMENTACAO", "TIPO DE MOVIMENTACAO"},
+        obrigatoria=False,
     )
+    if col_tesa is None:
+        mov = _read_source(movimentacao_source, header=1)
+        col_tesa = _localizar_coluna(
+            mov,
+            {"TESA", "TM", "TIPO MOVIMENTACAO", "TIPO DE MOVIMENTACAO"},
+            obrigatoria=False,
+        )
+
+    if mov.empty:
+        raise ValueError("A base MOVIMENTAÇÃO está vazia.")
+    if col_tesa is None:
+        raise ValueError("Não foi possível localizar a coluna TESA/TM na MOVIMENTAÇÃO.")
+
     col_data = _localizar_coluna(
         mov,
         {"EMISSAO", "EMISSÃO", "DATA EMISSAO", "DATA DE EMISSAO", "DATA", "DT MOVIMENTACAO", "DATA MOVIMENTACAO"},
@@ -314,7 +327,7 @@ def salvar_competencias_acuracia(resultados: list[dict]) -> list[dict]:
             "unidade": "%",
             "observacao": json.dumps(
                 {
-                    "origem": "movimentacao_central_setta",
+                    "origem": "analitico_s2_mais_movimentacao_020_520",
                     **resultado,
                 },
                 ensure_ascii=False,
