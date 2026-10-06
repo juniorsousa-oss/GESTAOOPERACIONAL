@@ -144,7 +144,7 @@ def _render_indicator(name, rows, index):
     state_key = f"ind_view_{index}"
     selected_key = f"ind_selected_{index}"
     if state_key not in st.session_state:
-        st.session_state[state_key] = "all"
+        st.session_state[state_key] = "month" if name == "ENTREGAS NO PRAZO" else "all"
     if selected_key not in st.session_state:
         st.session_state[selected_key] = None
 
