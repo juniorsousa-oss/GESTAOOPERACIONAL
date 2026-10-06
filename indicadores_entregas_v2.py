@@ -965,6 +965,10 @@ def render_alimentacao_entregas_v2(indicadores):
                         f"OTIF {resultado_anterior['otif_almox_pct']:.2f}%"
                         + (f" · snapshot v{snap_anterior}" if snap_anterior else "")
                     )
+                    # O gráfico é montado antes desta rotina. Limpa a consulta dos indicadores
+                    # e força uma única nova leitura para que o fechamento apareça imediatamente.
+                    st.cache_data.clear()
+                    st.rerun()
                 except Exception as exc:
                     st.warning(f"Não foi possível fechar automaticamente {competencia_anterior.strftime('%m/%Y')}: {exc}")
 
@@ -1007,6 +1011,9 @@ def render_alimentacao_entregas_v2(indicadores):
                     f"{pd.to_datetime(resultado['periodo_fim']).strftime('%d/%m/%Y')}"
                     + (f" · snapshot v{snapshot_atual}" if snapshot_atual else "")
                 )
+                # Atualiza imediatamente a série mensal exibida no topo.
+                st.cache_data.clear()
+                st.rerun()
             except Exception as exc:
                 st.session_state.pop("otif_resultado", None)
                 st.error(f"Não foi possível calcular/registrar automaticamente: {exc}")
