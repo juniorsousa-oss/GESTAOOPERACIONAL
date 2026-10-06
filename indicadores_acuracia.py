@@ -22,7 +22,7 @@ from supabase_client import get_client
 
 INDICADOR = "ACURÁCIA DE ESTOQUE"
 TZ_APP = ZoneInfo("America/Sao_Paulo")
-LOGIC_VERSION = "2026-10-06-acuracia-analitico-ajustes-s2-v6"
+LOGIC_VERSION = "2026-10-06-acuracia-analitico-ajustes-s2-v7"
 AJUSTES_TESA = {"020", "520"}
 
 
@@ -191,13 +191,15 @@ def calcular_acuracia_estoque(
     if materiais_base <= 0:
         raise ValueError("Nenhum código distinto com saldo positivo foi encontrado no armazém S2.")
 
-    # O Protheus pode deslocar o cabeçalho e também variar TESA como T.M./TM.
-    # Procuramos nas primeiras linhas até encontrar simultaneamente tipo de
-    # movimentação e armazém, evitando depender de uma posição fixa.
+    # MOVIMENTAÇÃO: primeiro tenta reconhecer o cabeçalho.
+    # Se o Protheus vier com outro layout, identifica as colunas pelos próprios
+    # valores: presença de 020/520 = tipo de movimento; presença de S2 = armazém.
     mov = pd.DataFrame()
     col_tesa = None
     col_armazem_mov = None
+    col_data = None
     header_mov = None
+
     for header_idx in range(0, 7):
         tentativa = _read_source(movimentacao_source, header=header_idx)
         if tentativa.empty:
@@ -209,36 +211,55 @@ def calcular_acuracia_estoque(
         )
         tentativa_armazem = _localizar_coluna(
             tentativa,
-            {
-                "ARMAZEM", "ARMAZÉM", "LOCAL", "COD ARMAZEM", "CÓD ARMAZÉM",
-                "COD. ARMAZEM", "COD. ARMAZÉM", "ARMAZEM ORIGEM", "ARMAZÉM ORIGEM",
-                "LOCAL ORIGEM",
-            },
+            {"ARMAZEM", "ARMAZÉM", "COD ARMAZEM", "CÓD ARMAZÉM", "COD. ARMAZEM", "COD. ARMAZÉM", "ARMAZEM ORIGEM", "ARMAZÉM ORIGEM"},
             obrigatoria=False,
         )
         if tentativa_tesa is not None and tentativa_armazem is not None:
             mov = tentativa
             col_tesa = tentativa_tesa
             col_armazem_mov = tentativa_armazem
+            col_data = _localizar_coluna(
+                mov,
+                {"EMISSAO", "EMISSÃO", "DATA EMISSAO", "DATA DE EMISSAO", "DATA", "DT MOVIMENTACAO", "DATA MOVIMENTACAO"},
+                obrigatoria=False,
+            )
             header_mov = header_idx
             break
 
     if mov.empty:
-        raise ValueError("A base MOVIMENTAÇÃO está vazia.")
-    if col_tesa is None:
-        raise ValueError("Não foi possível localizar a coluna TESA/T.M./TM na MOVIMENTAÇÃO.")
-    if col_armazem_mov is None:
-        raise ValueError("Não foi possível localizar a coluna de armazém na MOVIMENTAÇÃO para aplicar o filtro S2.")
+        raw = _read_source(movimentacao_source, header=None)
+        if raw.empty:
+            raise ValueError("A base MOVIMENTAÇÃO está vazia.")
 
-    col_data = _localizar_coluna(
-        mov,
-        {"EMISSAO", "EMISSÃO", "DATA EMISSAO", "DATA DE EMISSAO", "DATA", "DT MOVIMENTACAO", "DATA MOVIMENTACAO"},
-        obrigatoria=False,
-    )
+        tesa_scores = {}
+        arm_scores = {}
+        for col in raw.columns:
+            tesa_scores[col] = int(raw[col].map(_normalizar_tesa).isin(AJUSTES_TESA).sum())
+            arm_scores[col] = int(
+                raw[col].fillna("").astype(str).str.strip().str.upper().eq("S2").sum()
+            )
+
+        col_tesa_raw = max(tesa_scores, key=tesa_scores.get)
+        col_arm_raw = max(arm_scores, key=arm_scores.get)
+        if tesa_scores[col_tesa_raw] <= 0:
+            raise ValueError("A MOVIMENTAÇÃO não possui valores 020/520 identificáveis.")
+        if arm_scores[col_arm_raw] <= 0:
+            raise ValueError("A MOVIMENTAÇÃO não possui registros identificáveis do armazém S2.")
+
+        mov = raw.copy()
+        mov["_tesa"] = mov[col_tesa_raw].map(_normalizar_tesa)
+        mov["_armazem_mov"] = mov[col_arm_raw].fillna("").astype(str).str.strip().str.upper()
+        col_tesa = f"COLUNA {int(col_tesa_raw) + 1}"
+        col_armazem_mov = f"COLUNA {int(col_arm_raw) + 1}"
+        col_data = None
+        header_mov = None
 
     work = mov.copy()
-    work["_tesa"] = work[col_tesa].map(_normalizar_tesa)
-    work["_armazem_mov"] = work[col_armazem_mov].fillna("").astype(str).str.strip().str.upper()
+    if "_tesa" not in work.columns:
+        work["_tesa"] = work[col_tesa].map(_normalizar_tesa)
+    if "_armazem_mov" not in work.columns:
+        work["_armazem_mov"] = work[col_armazem_mov].fillna("").astype(str).str.strip().str.upper()
+
     work = work[
         work["_tesa"].isin(AJUSTES_TESA)
         & work["_armazem_mov"].eq("S2")
