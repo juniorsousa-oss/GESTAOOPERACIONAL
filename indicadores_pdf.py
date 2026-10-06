@@ -21,7 +21,7 @@ ALIASES = {
 }
 
 # Sempre que o desenho da imagem mudar, altere esta versão para invalidar o cache.
-EXPORT_LAYOUT_VERSION = "print-official-a4-v8-productividade"
+EXPORT_LAYOUT_VERSION = "print-official-a4-v9-periodo-corte"
 PRINT_STANDARD = "A4_EXECUTIVO_V1"
 
 LAST_INDICADORES = []
