@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 from datetime import date, datetime, timedelta, timezone
+from calendar import monthrange
 from io import BytesIO
 from zoneinfo import ZoneInfo
 
@@ -15,12 +16,45 @@ from indicadores_api import carregar_otif_central, rotulo_fonte, status_otif_cen
 
 INDICADOR = "ENTREGAS NO PRAZO"
 TZ_APP = ZoneInfo("America/Sao_Paulo")
-LOGIC_VERSION = "2026-09-11-otif-almox-funil-v6"
+LOGIC_VERSION = "2026-10-06-otif-almox-mensal-v7"
 TOL = 1e-9
 
 
 def _agora_local():
     return datetime.now(TZ_APP)
+
+
+def _ultimo_dia_mes(data_ref: date) -> date:
+    return date(data_ref.year, data_ref.month, monthrange(data_ref.year, data_ref.month)[1])
+
+
+def _mes_anterior(data_ref: date) -> date:
+    return date(data_ref.year, data_ref.month, 1) - timedelta(days=1)
+
+
+def _status_registro_mensal(competencia: date) -> str | None:
+    try:
+        rows = (
+            get_client().table("almox_indicadores")
+            .select("observacao")
+            .eq("indicador", INDICADOR)
+            .eq("competencia", competencia.isoformat())
+            .limit(1)
+            .execute()
+            .data
+            or []
+        )
+        if not rows:
+            return None
+        obs = rows[0].get("observacao")
+        if isinstance(obs, str):
+            try:
+                obs = json.loads(obs)
+            except Exception:
+                obs = {}
+        return str((obs or {}).get("status_competencia") or "").upper() or None
+    except Exception:
+        return None
 
 
 def _norm_code(value):
@@ -280,12 +314,32 @@ def _allocate_external_to_requests(solicitacoes, mrp_lookup):
     return df
 
 
-def calcular_entregas_v2(relatorio_file, for022_file, cadastro_file, mrp_file, data_registro: date | None = None):
+def calcular_entregas_v2(
+    relatorio_file,
+    for022_file,
+    cadastro_file,
+    mrp_file,
+    data_registro: date | None = None,
+    competencia_ref: date | None = None,
+):
     data_registro = data_registro or _agora_local().date()
-    periodo_inicio = date(data_registro.year, data_registro.month, 1)
-    periodo_fim = data_registro - timedelta(days=1)
+    competencia_ref = competencia_ref or data_registro
+    periodo_inicio = date(competencia_ref.year, competencia_ref.month, 1)
+    competencia = _ultimo_dia_mes(competencia_ref)
+
+    mes_ref = (competencia_ref.year, competencia_ref.month)
+    mes_atual = (data_registro.year, data_registro.month)
+    if mes_ref > mes_atual:
+        raise ValueError("Não é possível calcular uma competência futura.")
+    if mes_ref < mes_atual:
+        periodo_fim = competencia
+        status_competencia = "FECHADO"
+    else:
+        periodo_fim = data_registro if data_registro == competencia else data_registro - timedelta(days=1)
+        status_competencia = "FECHADO" if periodo_fim == competencia else "PARCIAL"
+
     if periodo_fim < periodo_inicio:
-        raise ValueError("Ainda não há período fechado no mês atual: hoje é o primeiro dia do mês.")
+        raise ValueError("Ainda não há dia encerrado para calcular a competência atual.")
     inicio_ts = pd.Timestamp(periodo_inicio)
     fim_ts = pd.Timestamp(periodo_fim)
 
@@ -570,6 +624,8 @@ def calcular_entregas_v2(relatorio_file, for022_file, cadastro_file, mrp_file, d
 
     return {
         "data_registro": data_registro.isoformat(),
+        "competencia": competencia.isoformat(),
+        "status_competencia": status_competencia,
         "periodo_inicio": periodo_inicio.isoformat(),
         "periodo_fim": periodo_fim.isoformat(),
         "gerado_em": _agora_local().isoformat(),
@@ -669,7 +725,7 @@ def _excel_auditoria(resultado, meta):
     ]
     metodologia = [
         ["ETAPA", "REGRA DE NEGÓCIO"],
-        ["Período", "Primeiro dia do mês até hoje - 1 dia."],
+        ["Período", "Competência mensal. Mês encerrado usa do dia 1 ao último dia; mês atual usa do dia 1 ao último dia encerrado e fecha definitivamente no último dia do mês."],
         ["Data CM", "FOR-022, aba Datas esperadas: OP em A e Separação em V. Se a OP repetir, usa a maior data que esteja dentro do período analisado."],
         ["Fonte mestre", "Relatório Geral. A auditoria preserva as linhas originais e adiciona as camadas de tratamento."],
         ["Consolidação", "Mesmo Projeto + Código + Data de Solicitação representa uma solicitação; as quantidades das linhas são somadas."],
@@ -755,16 +811,17 @@ def _excel_auditoria(resultado, meta):
 
 def _salvar(resultado, meta):
     client = get_client()
-    competencia = resultado["data_registro"]
+    competencia = str(resultado["competencia"])
+    status_competencia = str(resultado.get("status_competencia") or "PARCIAL").upper()
     audit_keys = [
-        "logic_version", "data_registro", "periodo_inicio", "periodo_fim", "projetos_programados",
-        "linhas_macro", "solicitacoes_consolidadas", "macro_qtd", "tipo_ii_qtd", "global_base_qtd",
-        "almox_base_ontime_qtd", "almox_ontime_qtd", "ontime_almox_pct", "infull_almox_pct", "otif_almox_pct",
-        "ontime_global_pct", "infull_global_pct", "otif_global_pct", "ontime_almox_sim_pct", "ontime_global_sim_pct",
-        "projetos_infull_almox", "projetos_completos_almox", "projetos_infull_global", "projetos_completos_global",
-        "qtd_solicitacao_tardia", "qtd_compra_early", "qtd_fabricacao_early", "qtd_sc_early",
-        "relatorio_nome", "relatorio_sha256", "for022_nome", "for022_sha256", "cadastro_nome", "cadastro_sha256",
-        "mrp_nome", "mrp_sha256",
+        "logic_version", "data_registro", "competencia", "status_competencia", "periodo_inicio", "periodo_fim",
+        "projetos_programados", "linhas_macro", "solicitacoes_consolidadas", "macro_qtd", "tipo_ii_qtd",
+        "global_base_qtd", "almox_base_ontime_qtd", "almox_ontime_qtd", "ontime_almox_pct",
+        "infull_almox_pct", "otif_almox_pct", "ontime_global_pct", "infull_global_pct", "otif_global_pct",
+        "ontime_almox_sim_pct", "ontime_global_sim_pct", "projetos_infull_almox", "projetos_completos_almox",
+        "projetos_infull_global", "projetos_completos_global", "qtd_solicitacao_tardia", "qtd_compra_early",
+        "qtd_fabricacao_early", "qtd_sc_early", "relatorio_nome", "relatorio_sha256", "for022_nome",
+        "for022_sha256", "cadastro_nome", "cadastro_sha256", "mrp_nome", "mrp_sha256",
     ]
     audit = {k: resultado[k] for k in audit_keys}
     payload = {
@@ -774,39 +831,55 @@ def _salvar(resultado, meta):
         "valor": round(float(resultado["otif_almox_pct"]), 2),
         "meta": round(float(meta), 2),
         "unidade": "%",
-        "observacao": json.dumps({"origem": "otif_almox_funil_v6", **audit}, ensure_ascii=False, separators=(",", ":")),
+        "observacao": json.dumps({"origem": "otif_almox_mensal_v7", **audit}, ensure_ascii=False, separators=(",", ":")),
         "atualizado_em": datetime.now(timezone.utc).isoformat(),
     }
     existente = (
-        client.table("almox_indicadores").select("id").eq("indicador", INDICADOR)
+        client.table("almox_indicadores").select("id,observacao").eq("indicador", INDICADOR)
         .eq("competencia", competencia).limit(1).execute().data or []
     )
+
     if existente:
+        obs_atual = existente[0].get("observacao")
+        if isinstance(obs_atual, str):
+            try:
+                obs_atual = json.loads(obs_atual)
+            except Exception:
+                obs_atual = {}
+        status_atual = str((obs_atual or {}).get("status_competencia") or "").upper()
+        if status_atual == "FECHADO":
+            return "mantido_fechado", None
         client.table("almox_indicadores").update(payload).eq("id", existente[0]["id"]).execute()
-        acao = "atualizado"
+        acao = "fechado" if status_competencia == "FECHADO" else "atualizado"
     else:
         client.table("almox_indicadores").insert(payload).execute()
-        acao = "salvo"
+        acao = "fechado" if status_competencia == "FECHADO" else "salvo"
+
     try:
         client.table("almox_historico").insert({
             "tipo": "indicador_otif_almox_auditoria",
-            "descricao": f"OTIF Almox {acao}: {_fmt_date(competencia)}",
+            "descricao": f"OTIF Almox {acao}: competência {_fmt_date(competencia)}",
             "dados": audit,
         }).execute()
     except Exception:
         pass
-    snapshot_versao = salvar_snapshot_otif(resultado, meta)
-    return acao, snapshot_versao
 
+    snapshot_versao = None
+    if status_competencia == "FECHADO":
+        snapshot_versao = salvar_snapshot_otif(resultado, meta)
+    return acao, snapshot_versao
 
 @st.fragment
 def render_alimentacao_entregas_v2(indicadores):
     hoje = _agora_local().date()
-    periodo_fim = hoje - timedelta(days=1)
+    competencia_atual = _ultimo_dia_mes(hoje)
+    periodo_fim_atual = hoje if hoje == competencia_atual else hoje - timedelta(days=1)
+
     with st.expander("ALIMENTAR · ENTREGAS NO PRAZO / OTIF ALMOX", expanded=False):
         st.caption(
-            f"Registro: {hoje.strftime('%d/%m/%Y')} · Período automático: 01/{hoje.strftime('%m/%Y')} a {periodo_fim.strftime('%d/%m/%Y')}. "
-            "Fonte mestre: Relatório Geral. O MRP é usado para explicar a causa atual das pendências."
+            f"Competência atual: {competencia_atual.strftime('%d/%m/%Y')} · "
+            f"Período em acompanhamento: 01/{hoje.strftime('%m/%Y')} a {periodo_fim_atual.strftime('%d/%m/%Y')} · "
+            "o mês é atualizado com as bases e fica travado quando fecha."
         )
 
         fonte = st.radio(
@@ -863,32 +936,73 @@ def render_alimentacao_entregas_v2(indicadores):
                 relatorio.getvalue() + for022.getvalue() + cadastro.getvalue() + mrp.getvalue()
             ).hexdigest()
 
+        anterior_ref = _mes_anterior(hoje)
+        competencia_anterior = _ultimo_dia_mes(anterior_ref)
+        if _status_registro_mensal(competencia_anterior) != "FECHADO":
+            fechamento_fp = hashlib.sha256(
+                (LOGIC_VERSION + "|FECHAMENTO|" + fonte + "|" + fingerprint_base + "|" + competencia_anterior.isoformat()).encode("utf-8")
+            ).hexdigest()
+            if st.session_state.get("otif_fechamento_fp") != fechamento_fp:
+                try:
+                    with st.spinner(f"Fechando competência {competencia_anterior.strftime('%m/%Y')}..."):
+                        resultado_anterior = calcular_entregas_v2(
+                            relatorio, for022, cadastro, mrp, hoje, anterior_ref
+                        )
+                        meta_anterior = _meta_mensal(anterior_ref)
+                        acao_anterior, snap_anterior = _salvar(resultado_anterior, meta_anterior)
+                    st.session_state["otif_fechamento_fp"] = fechamento_fp
+                    st.session_state["otif_fechamento_msg"] = (
+                        f"Competência {competencia_anterior.strftime('%m/%Y')} {acao_anterior}: "
+                        f"01/{competencia_anterior.strftime('%m/%Y')} a {competencia_anterior.strftime('%d/%m/%Y')} · "
+                        f"OTIF {resultado_anterior['otif_almox_pct']:.2f}%"
+                        + (f" · snapshot v{snap_anterior}" if snap_anterior else "")
+                    )
+                except Exception as exc:
+                    st.warning(f"Não foi possível fechar automaticamente {competencia_anterior.strftime('%m/%Y')}: {exc}")
+
+        if st.session_state.get("otif_fechamento_msg"):
+            st.info(st.session_state["otif_fechamento_msg"])
+
         m1, m2 = st.columns([1, 1])
         with m1:
-            st.text_input("Data do registro", value=hoje.strftime("%d/%m/%Y"), disabled=True, key="otif_data")
+            st.text_input(
+                "Competência mensal",
+                value=competencia_atual.strftime("%d/%m/%Y"),
+                disabled=True,
+                key="otif_competencia",
+            )
         with m2:
             meta = _meta_mensal(hoje)
             st.number_input("Meta OTIF Almox (%)", min_value=0.0, max_value=100.0, value=float(meta), step=0.1, disabled=True, key="otif_meta")
             st.caption(f"Meta automática do mês: {meta:.2f}% · evolução mensal de +2,60 p.p.")
 
         fingerprint = hashlib.sha256(
-            (LOGIC_VERSION + "|" + fonte + "|" + fingerprint_base + "|" + hoje.isoformat()).encode("utf-8")
+            (LOGIC_VERSION + "|ATUAL|" + fonte + "|" + fingerprint_base + "|" + hoje.isoformat()).encode("utf-8")
         ).hexdigest()
         if st.session_state.get("otif_fingerprint") != fingerprint:
             try:
-                with st.spinner("Aplicando o funil de elegibilidade e calculando On Time / In Full..."):
-                    resultado = calcular_entregas_v2(relatorio, for022, cadastro, mrp, hoje)
+                with st.spinner("Aplicando o funil de elegibilidade e atualizando a competência mensal..."):
+                    resultado = calcular_entregas_v2(relatorio, for022, cadastro, mrp, hoje, hoje)
+                    acao_atual, snapshot_atual = _salvar(resultado, meta)
                 st.session_state["otif_resultado"] = resultado
                 st.session_state["otif_fingerprint"] = fingerprint
-                st.session_state.pop("otif_registrado", None)
+                st.session_state["otif_auto_save"] = (
+                    f"Competência {competencia_atual.strftime('%m/%Y')} {acao_atual} automaticamente · "
+                    f"período {pd.to_datetime(resultado['periodo_inicio']).strftime('%d/%m/%Y')} a "
+                    f"{pd.to_datetime(resultado['periodo_fim']).strftime('%d/%m/%Y')}"
+                    + (f" · snapshot v{snapshot_atual}" if snapshot_atual else "")
+                )
             except Exception as exc:
                 st.session_state.pop("otif_resultado", None)
-                st.error(f"Não foi possível calcular: {exc}")
+                st.error(f"Não foi possível calcular/registrar automaticamente: {exc}")
                 return
 
         resultado = st.session_state.get("otif_resultado")
         if not resultado:
             return
+
+        if st.session_state.get("otif_auto_save"):
+            st.success(st.session_state["otif_auto_save"])
 
         st.markdown("#### INDICADOR DO ALMOXARIFADO")
         a, b, c, d = st.columns(4)
@@ -897,6 +1011,7 @@ def render_alimentacao_entregas_v2(indicadores):
         c.metric("OTIF ALMOX", f"{resultado['otif_almox_pct']:.2f}%")
         d.metric("BASE ELEGÍVEL", f"{resultado['almox_base_ontime_qtd']:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
         st.caption(
+            f"Status da competência: {resultado['status_competencia']} · "
             f"On Time oficial usa Data de Separação sem horas. Simulação pela Data de Conferência: {resultado['ontime_almox_sim_pct']:.2f}%. "
             f"In Full: {resultado['projetos_completos_almox']} de {resultado['projetos_infull_almox']} projetos elegíveis completos."
         )
@@ -921,24 +1036,16 @@ def render_alimentacao_entregas_v2(indicadores):
             st.dataframe(pd.DataFrame(resultado["materiais_mrp"]), use_container_width=True, hide_index=True)
 
         excel_bytes = _excel_auditoria(resultado, meta)
-        x1, x2 = st.columns(2)
-        with x1:
-            st.download_button(
-                "EXPORTAR AUDITORIA · EXCEL",
-                excel_bytes,
-                file_name=f"auditoria_otif_almox_{hoje.isoformat()}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-                key="otif_excel",
-            )
-        with x2:
-            if st.button(f"REGISTRAR OTIF ALMOX · {hoje.strftime('%d/%m/%Y')}", type="primary", use_container_width=True, key="otif_salvar"):
-                try:
-                    acao, snapshot_versao = _salvar(resultado, meta)
-                    st.session_state["otif_registrado"] = True
-                    st.cache_data.clear()
-                    st.success(f"Resultado {acao}: OTIF Almox {resultado['otif_almox_pct']:.2f}% · snapshot detalhado v{snapshot_versao} salvo.")
-                except Exception as exc:
-                    st.error(f"Não foi possível registrar no Supabase: {exc}")
-        if st.session_state.get("otif_registrado"):
-            st.info("Resultado e memória de cálculo detalhada foram persistidos. O histórico pode ser consultado sem reenviar as planilhas.")
+        st.download_button(
+            "EXPORTAR AUDITORIA · EXCEL",
+            excel_bytes,
+            file_name=f"auditoria_otif_almox_{competencia_atual.isoformat()}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            key="otif_excel",
+        )
+        st.caption(
+            "Gravação automática ativa: durante o mês, o mesmo registro da competência é atualizado. "
+            "Ao fechar o mês, ele recebe status FECHADO e não pode mais ser sobrescrito pela rotina automática."
+        )
+
