@@ -162,6 +162,10 @@ def _base_s2_analitico(source) -> dict:
     por_codigo = work.groupby("_codigo", as_index=False)["_saldo"].sum()
     com_saldo = por_codigo[por_codigo["_saldo"] > 0].copy()
 
+    base_auditoria = com_saldo.rename(
+        columns={"_codigo": "CODIGO", "_saldo": "SALDO_S2"}
+    ).sort_values("CODIGO").reset_index(drop=True)
+
     return {
         "materiais_s2_com_saldo": int(com_saldo["_codigo"].nunique()),
         "linhas_analitico_s2": int(len(work)),
@@ -170,6 +174,7 @@ def _base_s2_analitico(source) -> dict:
         "coluna_armazem": str(col_armazem),
         "coluna_saldo": str(col_saldo),
         "escopo_s2": "ANALÍTICO · ARMZ=S2 · saldo > 0 após consolidação por código",
+        "base_s2_auditoria": base_auditoria.to_dict("records"),
     }
 
 def _meta_mensal(data_ref: date) -> float:
@@ -224,19 +229,23 @@ def calcular_acuracia_estoque(
             f"Fonte MOVIMENTAÇÃO incompatível: coluna L deveria ser ARMAZEM e veio '{col_armazem}'."
         )
 
-    work = mov.copy()
-    work["_tm"] = work[col_tm].map(_normalizar_tesa)
-    work["_data"] = _to_dates(work[col_data]).dt.normalize()
-    work["_usuario"] = work[col_usuario].fillna("").astype(str).str.strip()
-    work["_usuario_norm"] = work["_usuario"].str.upper()
-    work["_armazem"] = work[col_armazem].fillna("").astype(str).str.strip().str.upper()
+    mov_audit = mov.copy()
+    mov_audit["_tm"] = mov_audit[col_tm].map(_normalizar_tesa)
+    mov_audit["_data"] = _to_dates(mov_audit[col_data]).dt.normalize()
+    mov_audit["_usuario"] = mov_audit[col_usuario].fillna("").astype(str).str.strip()
+    mov_audit["_usuario_norm"] = mov_audit["_usuario"].str.upper()
+    mov_audit["_armazem"] = mov_audit[col_armazem].fillna("").astype(str).str.strip().str.upper()
 
-    work = work[
-        work["_tm"].isin(AJUSTES_TESA)
-        & work["_armazem"].eq("S2")
-        & work["_usuario"].ne("")
-        & work["_usuario_norm"].ne("API")
-        & work["_data"].notna()
+    candidatos = mov_audit[
+        mov_audit["_tm"].isin(AJUSTES_TESA)
+        & mov_audit["_armazem"].eq("S2")
+        & mov_audit["_data"].notna()
+    ].copy()
+
+    api_excluidos = candidatos[candidatos["_usuario_norm"].eq("API")].copy()
+    work = candidatos[
+        candidatos["_usuario"].ne("")
+        & candidatos["_usuario_norm"].ne("API")
     ].copy()
 
     if work.empty:
@@ -246,6 +255,7 @@ def calcular_acuracia_estoque(
         )
 
     work["_periodo"] = work["_data"].dt.to_period("M")
+    api_excluidos["_periodo"] = api_excluidos["_data"].dt.to_period("M")
     resultados: list[dict] = []
 
     for periodo, part in work.groupby("_periodo", sort=True):
@@ -270,8 +280,19 @@ def calcular_acuracia_estoque(
         ajustes = int(len(part))
         ajustes_020 = int(part["_tm"].eq("020").sum())
         ajustes_520 = int(part["_tm"].eq("520").sum())
+
+        api_periodo = api_excluidos[api_excluidos["_periodo"].eq(periodo)].copy()
+        if mes == mes_atual:
+            api_periodo = api_periodo[api_periodo["_data"] <= pd.Timestamp(fim)].copy()
+
         percentual_ajuste = (ajustes / materiais_base) * 100.0
         acuracia = 100.0 - percentual_ajuste
+
+        audit_cols = [col_tm, col_data, col_usuario, col_armazem]
+        ajuste_auditoria = part[audit_cols].copy()
+        ajuste_auditoria.columns = ["TM", "EMISSAO", "USUARIO", "ARMAZEM"]
+        api_auditoria = api_periodo[audit_cols].copy()
+        api_auditoria.columns = ["TM", "EMISSAO", "USUARIO", "ARMAZEM"]
 
         resultados.append({
             "competencia": competencia.isoformat(),
@@ -285,6 +306,9 @@ def calcular_acuracia_estoque(
             "ajustes_020_520": ajustes,
             "ajustes_020": ajustes_020,
             "ajustes_520": ajustes_520,
+            "movimentacoes_api_excluidas": int(len(api_periodo)),
+            "ajustes_validos_auditoria": ajuste_auditoria.to_dict("records"),
+            "api_excluidos_auditoria": api_auditoria.to_dict("records"),
             "coluna_tm": str(col_tm),
             "coluna_data_movimentacao": str(col_data),
             "coluna_usuario_movimentacao": str(col_usuario),
@@ -336,6 +360,10 @@ def salvar_competencias_acuracia(resultados: list[dict]) -> list[dict]:
             or []
         )
 
+        resumo_persistencia = {
+            k: v for k, v in resultado.items()
+            if k not in {"base_s2_auditoria", "ajustes_validos_auditoria", "api_excluidos_auditoria"}
+        }
         payload = {
             "competencia": competencia,
             "categoria": "OPERACIONAL",
@@ -346,7 +374,7 @@ def salvar_competencias_acuracia(resultados: list[dict]) -> list[dict]:
             "observacao": json.dumps(
                 {
                     "origem": "analitico_s2_mais_tm_020_520_s2_usuario_humano",
-                    **resultado,
+                    **resumo_persistencia,
                 },
                 ensure_ascii=False,
                 separators=(",", ":"),
@@ -387,6 +415,128 @@ def salvar_competencias_acuracia(resultados: list[dict]) -> list[dict]:
         })
 
     return saida
+
+
+def _excel_safe_acuracia(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    for col in out.columns:
+        if pd.api.types.is_datetime64_any_dtype(out[col]):
+            try:
+                out[col] = out[col].dt.tz_localize(None)
+            except Exception:
+                pass
+    return out
+
+
+@st.cache_data(show_spinner=False, max_entries=8)
+def _excel_auditoria_acuracia(resultado: dict) -> bytes:
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    output = BytesIO()
+
+    resumo = [
+        ["AUDITORIA · ACURÁCIA DE ESTOQUE", ""],
+        ["Competência", pd.to_datetime(resultado["competencia"]).strftime("%m/%Y")],
+        ["Status", resultado["status_competencia"]],
+        ["Período", f"{pd.to_datetime(resultado['periodo_inicio']).strftime('%d/%m/%Y')} a {pd.to_datetime(resultado['periodo_fim']).strftime('%d/%m/%Y')}"],
+        ["Versão da lógica", resultado["logic_version"]],
+        ["", ""],
+        ["Materiais distintos S2 com saldo > 0", resultado["materiais_s2_com_saldo"]],
+        ["Ajustes válidos TM 020/520", resultado["ajustes_020_520"]],
+        ["TM 020 válidos", resultado.get("ajustes_020", 0)],
+        ["TM 520 válidos", resultado.get("ajustes_520", 0)],
+        ["Movimentações API excluídas", resultado.get("movimentacoes_api_excluidas", 0)],
+        ["% de ajuste", resultado["percentual_ajuste"]],
+        ["Acurácia (%)", resultado["valor"]],
+        ["Meta (%)", resultado["meta"]],
+        ["", ""],
+        ["Fórmula % ajuste", "Ajustes válidos / materiais distintos S2 com saldo positivo × 100"],
+        ["Fórmula acurácia", "100% - % de ajuste"],
+        ["Regra usuário", resultado.get("regra_usuario", "USUARIO diferente de API")],
+        ["Regra estoque", resultado.get("escopo_s2", "")],
+        ["Coluna TM", resultado.get("coluna_tm", "")],
+        ["Coluna emissão", resultado.get("coluna_data_movimentacao", "")],
+        ["Coluna usuário", resultado.get("coluna_usuario_movimentacao", "")],
+        ["Coluna armazém", resultado.get("coluna_armazem_movimentacao", "")],
+    ]
+
+    metodologia = [
+        ["ETAPA", "REGRA DE NEGÓCIO"],
+        ["Base de estoque", "Usar o relatório ANALÍTICO e filtrar ARMZ = S2."],
+        ["Material elegível", "Consolidar por código e considerar somente códigos distintos cuja soma do SALDO EM ESTOQUE seja maior que zero."],
+        ["Movimentações de ajuste", "Usar somente TM 020 e TM 520."],
+        ["Armazém da movimentação", "Somente ARMAZEM = S2."],
+        ["Usuário", "Somente USUARIO preenchido e diferente de API. Movimentações com USUARIO = API são automáticas e ficam excluídas."],
+        ["Período", "Competência mensal. Mês encerrado usa do dia 1 ao último dia; mês corrente usa até o último dia encerrado."],
+        ["% de ajuste", "Quantidade de ajustes válidos / quantidade de materiais distintos com saldo positivo no S2 × 100."],
+        ["Acurácia", "100% - % de ajuste."],
+        ["Meta", "AGO/2026 = 95,50%; acréscimo contínuo de 0,50 ponto percentual por competência."],
+    ]
+
+    base_df = pd.DataFrame(resultado.get("base_s2_auditoria") or [])
+    validos_df = pd.DataFrame(resultado.get("ajustes_validos_auditoria") or [])
+    api_df = pd.DataFrame(resultado.get("api_excluidos_auditoria") or [])
+
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        pd.DataFrame(resumo).to_excel(writer, sheet_name="RESUMO", index=False, header=False)
+        _excel_safe_acuracia(base_df).to_excel(writer, sheet_name="BASE_S2", index=False)
+        _excel_safe_acuracia(validos_df).to_excel(writer, sheet_name="AJUSTES_VALIDOS", index=False)
+        _excel_safe_acuracia(api_df).to_excel(writer, sheet_name="API_EXCLUIDOS", index=False)
+        pd.DataFrame(metodologia).to_excel(writer, sheet_name="METODOLOGIA", index=False, header=False)
+
+        wb = writer.book
+        dark = PatternFill("solid", fgColor="1F2937")
+        yellow = PatternFill("solid", fgColor="FFD43D")
+        white = Font(color="FFFFFF", bold=True)
+        thin = Side(style="thin", color="D1D5DB")
+        border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+        for ws in wb.worksheets:
+            ws.sheet_view.showGridLines = False
+            ws.freeze_panes = "A2"
+            if ws.title not in ("RESUMO", "METODOLOGIA") and ws.max_row >= 1:
+                for cell in ws[1]:
+                    cell.fill = dark
+                    cell.font = white
+                    cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                    cell.border = border
+                ws.auto_filter.ref = ws.dimensions
+            for row in ws.iter_rows():
+                for cell in row:
+                    cell.alignment = Alignment(vertical="top", wrap_text=True)
+                    if ws.title not in ("RESUMO", "METODOLOGIA"):
+                        cell.border = border
+            for col in range(1, ws.max_column + 1):
+                vals = [str(ws.cell(r, col).value or "") for r in range(1, min(ws.max_row, 200) + 1)]
+                width = min(max(max((len(v) for v in vals), default=8) + 2, 10), 42)
+                ws.column_dimensions[get_column_letter(col)].width = width
+
+        ws = wb["RESUMO"]
+        ws.merge_cells("A1:B1")
+        ws["A1"].fill = yellow
+        ws["A1"].font = Font(size=14, bold=True, color="111111")
+        ws["A1"].alignment = Alignment(horizontal="center")
+        ws.column_dimensions["A"].width = 48
+        ws.column_dimensions["B"].width = 86
+        for r in range(2, ws.max_row + 1):
+            ws.cell(r, 1).font = Font(bold=True)
+            ws.cell(r, 1).border = border
+            ws.cell(r, 2).border = border
+
+        ws = wb["METODOLOGIA"]
+        for cell in ws[1]:
+            cell.fill = dark
+            cell.font = white
+            cell.border = border
+        for r in range(2, ws.max_row + 1):
+            ws.cell(r, 1).font = Font(bold=True)
+            ws.cell(r, 1).border = border
+            ws.cell(r, 2).border = border
+        ws.column_dimensions["A"].width = 34
+        ws.column_dimensions["B"].width = 110
+
+    return output.getvalue()
 
 
 @st.fragment
@@ -470,4 +620,18 @@ def render_alimentacao_acuracia(indicadores):
             for r in gravados
         ])
         st.dataframe(conferencia, use_container_width=True, hide_index=True)
+
+        excel_bytes = _excel_auditoria_acuracia(ultimo)
+        st.download_button(
+            "EXPORTAR AUDITORIA · EXCEL",
+            excel_bytes,
+            file_name=f"auditoria_acuracia_estoque_{ultimo['competencia']}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            key="acuracia_excel",
+        )
+        st.caption(
+            "A auditoria exporta a base S2 consolidada, os ajustes válidos, "
+            "as movimentações API excluídas e a metodologia usada no cálculo."
+        )
 
