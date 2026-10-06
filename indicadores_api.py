@@ -14,6 +14,7 @@ from supabase_client import get_client
 
 SOURCE_KEYS_OTIF = ("relatorio_geral", "for022", "cadastros")
 DERIVED_KEY_OTIF = "relatorio_mrp"
+SOURCE_KEY_ACURACIA = "movimentacao"
 
 
 def _response_data(response: Any) -> Any:
@@ -337,3 +338,51 @@ def rotulo_fonte(meta: dict | None) -> str:
     if linhas not in (None, ""):
         partes.append(f"{int(linhas):,} linhas".replace(",", "."))
     return " · ".join(partes)
+
+@st.cache_data(ttl=120, show_spinner=False)
+def status_acuracia_central() -> dict:
+    resp = central_api_call(
+        "source_status",
+        {"keys": [SOURCE_KEY_ACURACIA]},
+    )
+    fontes = _meta_map(resp.get("data") or [], "source_key")
+    meta = fontes.get(SOURCE_KEY_ACURACIA) or {}
+    return {
+        "source": meta,
+        "ready": bool(meta.get("available")),
+    }
+
+
+def carregar_movimentacao_central() -> dict:
+    state = status_acuracia_central()
+    meta = state.get("source") or {}
+    if not state.get("ready"):
+        raise RuntimeError("Base MOVIMENTAÇÃO indisponível na Central SETTA.")
+
+    source = _download_preferred_source(
+        SOURCE_KEY_ACURACIA,
+        int(meta.get("version") or 0),
+        str(meta.get("last_update_at") or meta.get("updated_at") or ""),
+    )
+    fingerprint = json.dumps(
+        {
+            "source_key": SOURCE_KEY_ACURACIA,
+            "version": int(meta.get("version") or 0),
+            "updated_at": str(
+                meta.get("last_update_at")
+                or meta.get("updated_at")
+                or ""
+            ),
+            "rows_count": meta.get("rows_count"),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        default=str,
+        separators=(",", ":"),
+    )
+    return {
+        "movimentacao": source,
+        "status": state,
+        "fingerprint": fingerprint,
+    }
+
