@@ -96,7 +96,7 @@ def carregar_snapshot(snapshot_id: str):
 
 def salvar_snapshot_otif(resultado: dict, meta: float) -> int:
     client = get_client()
-    competencia = str(resultado.get("data_registro") or "")
+    competencia = str(resultado.get("competencia") or resultado.get("data_registro") or "")
     anteriores = (
         client.table(SNAPSHOT_TABLE)
         .select("versao")
