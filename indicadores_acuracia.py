@@ -22,7 +22,7 @@ from supabase_client import get_client
 
 INDICADOR = "ACURÁCIA DE ESTOQUE"
 TZ_APP = ZoneInfo("America/Sao_Paulo")
-LOGIC_VERSION = "2026-10-06-acuracia-analitico-ajustes-v2"
+LOGIC_VERSION = "2026-10-06-acuracia-analitico-ajustes-s2-v3"
 AJUSTES_TESA = {"020", "520"}
 
 
@@ -213,12 +213,26 @@ def calcular_acuracia_estoque(analitico_source, movimentacao_source, hoje: date 
         {"EMISSAO", "EMISSÃO", "DATA EMISSAO", "DATA DE EMISSAO", "DATA", "DT MOVIMENTACAO", "DATA MOVIMENTACAO"},
         obrigatoria=False,
     )
+    col_armazem_mov = _localizar_coluna(
+        mov,
+        {
+            "ARMAZEM", "ARMAZÉM", "LOCAL", "COD ARMAZEM", "CÓD ARMAZÉM",
+            "ARMAZEM ORIGEM", "ARMAZÉM ORIGEM", "LOCAL ORIGEM",
+        },
+        obrigatoria=False,
+    )
+    if col_armazem_mov is None:
+        raise ValueError("Não foi possível localizar a coluna de armazém na MOVIMENTAÇÃO para aplicar o filtro S2.")
 
     work = mov.copy()
     work["_tesa"] = work[col_tesa].map(_normalizar_tesa)
-    work = work[work["_tesa"].isin(AJUSTES_TESA)].copy()
+    work["_armazem_mov"] = work[col_armazem_mov].fillna("").astype(str).str.strip().str.upper()
+    work = work[
+        work["_tesa"].isin(AJUSTES_TESA)
+        & work["_armazem_mov"].eq("S2")
+    ].copy()
     if work.empty:
-        raise ValueError("Nenhuma movimentação TESA/TM 020 ou 520 foi encontrada.")
+        raise ValueError("Nenhuma movimentação TESA/TM 020 ou 520 do armazém S2 foi encontrada.")
 
     # Se houver data, apuramos cada competência existente no próprio relatório.
     # Se a MOVIMENTAÇÃO vier sem data, ela é considerada o relatório do mês
@@ -272,6 +286,8 @@ def calcular_acuracia_estoque(analitico_source, movimentacao_source, hoje: date 
             "materiais_s2_com_saldo": materiais_base,
             "ajustes_020_520": ajustes,
             "coluna_tesa": str(col_tesa),
+            "coluna_armazem_movimentacao": str(col_armazem_mov),
+            "armazem_movimentacao": "S2",
             "coluna_data_movimentacao": str(col_data or ""),
             "tesa_ajustes": sorted(AJUSTES_TESA),
             "logic_version": LOGIC_VERSION,
@@ -425,7 +441,7 @@ def render_alimentacao_acuracia(indicadores):
 
         st.caption(
             f"Base: {int(ultimo['materiais_s2_com_saldo']):,} códigos distintos com saldo positivo no S2 · "
-            f"Ajustes: {int(ultimo['ajustes_020_520']):,} movimentações TESA/TM 020 ou 520 · "
+            f"Ajustes: {int(ultimo['ajustes_020_520']):,} movimentações TESA/TM 020 ou 520 também do armazém S2 · "
             f"Acurácia = 100% − ({int(ultimo['ajustes_020_520'])} ÷ {int(ultimo['materiais_s2_com_saldo'])} × 100)."
             .replace(",", ".")
         )
