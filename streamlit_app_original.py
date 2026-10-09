@@ -6,6 +6,28 @@ from io import BytesIO
 import pandas as pd
 from PIL import Image
 import streamlit as st
+
+# Padrão SETTA: tabelas responsivas ao total de registros exibidos nos filtros.
+def _setta_table_height(data, requested=None):
+    try:
+        rows = len(data)
+    except (TypeError, ValueError):
+        return requested
+    limit = requested if isinstance(requested, int) and requested > 0 else 600
+    return min(limit, max(84, 42 + 35 * (min(rows, 100) + 1)))
+
+
+def _setta_dataframe(data, *args, **kwargs):
+    kwargs["height"] = _setta_table_height(data, kwargs.get("height"))
+    return st.dataframe(data, *args, **kwargs)
+
+
+def _setta_data_editor(data, *args, **kwargs):
+    if kwargs.get("num_rows") != "dynamic":
+        kwargs["height"] = _setta_table_height(data, kwargs.get("height"))
+    return st.data_editor(data, *args, **kwargs)
+
+
 from supabase_client import get_client
 from indicadores_dashboard import render_indicadores
 
@@ -233,7 +255,7 @@ if pagina=="indicadores":
     indicadores=rows("almox_indicadores",order="competencia")
     render_indicadores(indicadores)
 elif pagina=="historico":
-    st.markdown(f'<div class="section">{txt("secao_historico")}</div>',unsafe_allow_html=True);st.dataframe(df(rows("almox_historico",order="criado_em")),use_container_width=True,hide_index=True)
+    st.markdown(f'<div class="section">{txt("secao_historico")}</div>',unsafe_allow_html=True);_setta_dataframe(df(rows("almox_historico",order="criado_em")),use_container_width=True,hide_index=True)
 
 elif pagina=="equipes":
     client=get_client();equipes_raw=rows("almox_equipes",order="nome",desc=False);colaboradores_raw=rows("almox_colaboradores",order="nome",desc=False)
