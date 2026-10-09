@@ -9,22 +9,34 @@ import streamlit as st
 
 # Padrão SETTA: tabelas responsivas ao total de registros exibidos nos filtros.
 def _setta_table_height(data, requested=None):
-    try:
-        rows = len(data)
-    except (TypeError, ValueError):
+    """Altura baseada nas linhas reais (DataFrame ou pandas.Styler)."""
+    if isinstance(requested, str):
         return requested
-    limit = requested if isinstance(requested, int) and requested > 0 else 600
-    return min(limit, max(84, 42 + 35 * (min(rows, 100) + 1)))
+    frame = getattr(data, "data", data)
+    try:
+        rows = len(frame)
+    except (TypeError, ValueError, AttributeError):
+        return requested if isinstance(requested, int) and requested >= 120 else None
+    ceiling = max(120, requested) if isinstance(requested, int) and requested > 0 else 600
+    return int(min(ceiling, max(120, 42 + 35 * (min(max(0, rows), 100) + 1))))
 
 
 def _setta_dataframe(data, *args, **kwargs):
-    kwargs["height"] = _setta_table_height(data, kwargs.get("height"))
+    height = _setta_table_height(data, kwargs.get("height"))
+    if height is None:
+        kwargs.pop("height", None)
+    else:
+        kwargs["height"] = height
     return st.dataframe(data, *args, **kwargs)
 
 
 def _setta_data_editor(data, *args, **kwargs):
     if kwargs.get("num_rows") != "dynamic":
-        kwargs["height"] = _setta_table_height(data, kwargs.get("height"))
+        height = _setta_table_height(data, kwargs.get("height"))
+        if height is None:
+            kwargs.pop("height", None)
+        else:
+            kwargs["height"] = height
     return st.data_editor(data, *args, **kwargs)
 
 
