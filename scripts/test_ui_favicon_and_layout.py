@@ -19,6 +19,7 @@ original = read("streamlit_app_original.py")
 visual = read("setta_visual.py")
 ui = read("ui_refinements.py")
 dashboard = read("indicadores_dashboard.py")
+access = read("controle_acesso.py")
 
 assert 'page_icon=centralized_page_icon()' in app
 assert "from setta_visual import centralized_page_icon" in app
@@ -38,6 +39,13 @@ assert "ind-chart-head" in dashboard
 assert "st.markdown('</div>'" not in dashboard
 assert ".ind-kpi-label{font-size:11px" in dashboard
 assert "axis_max = max(105.0" in dashboard
+
+# Autofill nativo precisa declarar que é uma senha existente, não cadastro novo.
+assert 'key="acesso_email_login", autocomplete="username"' in access
+assert 'key="acesso_senha_login", autocomplete="current-password"' in access
+assert "_habilitar_autofill_login" not in access
+assert "components.html(" not in access
+assert "sign_in_with_password" in access
 
 # Nada na melhoria deve modificar lógica de acesso ou as rotinas de cálculo.
 assert "from controle_acesso import render_login" in app
