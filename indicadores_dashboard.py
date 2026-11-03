@@ -119,7 +119,7 @@ def _chart(rows, title, chart_key):
         marker=dict(color="#ffd43d", line=dict(color="#ffd43d", width=0)),
         text=[_pct(v) for v in values],
         textposition="outside",
-        textfont=dict(color="#f4f5f4", size=10),
+        textfont=dict(color="#eaf0eb", size=12),
         customdata=[[labels[i], metas[i]] for i in range(len(rows))],
         hovertemplate="%{customdata[0]}<br>Resultado: %{y:.2f}%<br>Meta: %{customdata[1]:.2f}%<extra>Clique para selecionar</extra>",
         cliponaxis=False,
@@ -130,17 +130,27 @@ def _chart(rows, title, chart_key):
         hovertemplate="%{customdata[0]}<br>Meta: %{y:.2f}%<extra></extra>",
         customdata=[[labels[i]] for i in range(len(rows))],
     ))
+    # Altura e eixos dimensionados para leitura confortável em monitores e notebooks.
+    chart_height = 332 if len(rows) <= 12 else 370
+    axis_max = max(105.0, max(values + metas) * 1.08)
     fig.update_layout(
-        height=285,
-        margin=dict(l=35, r=15, t=28, b=45),
-        paper_bgcolor="#0b100e", plot_bgcolor="#0b100e",
-        font=dict(color="#b5bcb8", size=10),
-        hoverlabel=dict(bgcolor="#111714", font_color="#f4f5f4"),
-        bargap=0.28, showlegend=False, clickmode="event+select",
-        xaxis=dict(tickmode="array", tickvals=list(range(len(rows))), ticktext=labels,
-                   showgrid=False, zeroline=False, fixedrange=True, tickfont=dict(size=9)),
-        yaxis=dict(range=[0, 105], tickmode="array", tickvals=[0,20,40,60,80,100],
-                   ticksuffix="%", gridcolor="#25302b", zeroline=False, fixedrange=True),
+        height=chart_height,
+        margin=dict(l=42, r=22, t=40, b=52 if len(rows) <= 12 else 86),
+        paper_bgcolor="#101714", plot_bgcolor="#101714",
+        font=dict(color="#c4cec8", size=12),
+        hoverlabel=dict(bgcolor="#18221d", font_color="#f4f5f4"),
+        bargap=0.30, showlegend=False, clickmode="event+select",
+        xaxis=dict(
+            tickmode="array", tickvals=list(range(len(rows))), ticktext=labels,
+            tickangle=-35 if len(rows) > 12 else 0,
+            showgrid=False, zeroline=False, fixedrange=True,
+            tickfont=dict(size=11, color="#c8d1cb"), automargin=True,
+        ),
+        yaxis=dict(
+            range=[0, axis_max], tickmode="array", tickvals=[0, 20, 40, 60, 80, 100],
+            ticksuffix="%", gridcolor="#2b3831", zeroline=False, fixedrange=True,
+            tickfont=dict(size=11, color="#b4c0b8"), automargin=True,
+        ),
         dragmode=False,
     )
     event = st.plotly_chart(
@@ -194,12 +204,14 @@ def _render_indicator(name, rows, index):
             st.session_state[selected_key] = None
 
         st.markdown(_kpis(chart_rows, selected_index), unsafe_allow_html=True)
-        st.markdown('''<div class="ind-chart-panel">
-          <div class="ind-chart-head"><div><div class="ind-chart-title">Comparativo histórico</div>
-          <div class="ind-legend"><span><i class="ind-dot result"></i>Resultado</span>
-          <span><i class="ind-dot target"></i>Meta</span></div></div></div>''', unsafe_allow_html=True)
-        clicked = _chart(chart_rows, name, f"ind_chart_{index}_{view}")
-        st.markdown('</div>', unsafe_allow_html=True)
+        # O gráfico e o cabeçalho agora compartilham o MESMO container.
+        # Antes, tags HTML divididas entre st.markdown não envolviam o Plotly.
+        with st.container(border=True):
+            st.markdown('''<div class="ind-chart-head">
+              <div class="ind-chart-title">Comparativo histórico</div>
+              <div class="ind-legend"><span><i class="ind-dot result"></i>Resultado</span>
+              <span><i class="ind-dot target"></i>Meta</span></div></div>''', unsafe_allow_html=True)
+            clicked = _chart(chart_rows, name, f"ind_chart_{index}_{view}")
 
         if clicked is not None:
             st.session_state[selected_key] = clicked
@@ -235,33 +247,38 @@ def render_indicadores(indicadores):
             groups[key].append(row)
 
     st.markdown('''<style>
-    .ind-page-title{font-size:22px;font-weight:900;color:#f4f5f4;text-transform:uppercase;letter-spacing:.4px;margin:2px 0 3px}
-    .ind-page-sub{font-size:12px;color:#9aa39f;margin-bottom:12px}
-    .ind-section-title{font-size:16px;font-weight:900;color:#ffd43d;text-transform:uppercase;letter-spacing:.5px;margin:0 0 10px;padding:0 2px}
-    .ind-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:0 0 9px}
-    .ind-kpi{position:relative;min-height:78px;border:1px solid #304039;border-radius:11px;background:linear-gradient(145deg,#151b18,#0d1110);padding:12px 14px;box-sizing:border-box;overflow:hidden}
-    .ind-kpi:after{content:"";position:absolute;width:68px;height:68px;border-radius:50%;right:-25px;bottom:-34px;background:rgba(255,212,61,.06)}
-    .ind-kpi-label{font-size:9px;font-weight:900;color:#a8b0ac;letter-spacing:.5px;text-transform:uppercase}
-    .ind-kpi-value{font-size:25px;line-height:1.05;font-weight:900;color:#f4f5f4;margin-top:7px}
-    .ind-kpi-sub{font-size:9px;color:#8c9691;margin-top:4px}
-    .ind-status{display:flex;align-items:center;gap:10px}.ind-status:after{background:rgba(34,197,94,.08)}
-    .ind-status.bad:after{background:rgba(255,77,79,.08)}.ind-status.neutral:after{background:rgba(140,150,145,.06)}
-    .ind-status-arrow{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(34,197,94,.12);color:#4ade80;font-size:23px;font-weight:900;flex:0 0 38px}
-    .ind-status.bad .ind-status-arrow{background:rgba(255,77,79,.12);color:#ff6668}.ind-status.neutral .ind-status-arrow{background:rgba(140,150,145,.12);color:#aab2ae}
-    .ind-status-text{font-size:14px;font-weight:900;color:#4ade80;margin-top:4px}.ind-status.bad .ind-status-text{color:#ff6668}.ind-status.neutral .ind-status-text{color:#aab2ae}
-    .ind-chart-panel{border:1px solid #26342e;border-radius:11px;background:#0b100e;padding:12px 10px 7px;margin-bottom:0}
-    .ind-chart-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:1px solid #202a26;padding:0 1px 9px;margin-bottom:0}
-    .ind-chart-title{font-size:13px;font-weight:900;color:#f4f5f4}.ind-legend{display:flex;gap:15px;margin-top:7px;font-size:9px;color:#9ba49f}.ind-legend span{display:flex;align-items:center;gap:5px}.ind-dot{display:inline-block;width:15px;height:4px;border-radius:4px}.ind-dot.result{background:#ffd43d}.ind-dot.target{background:#f4f5f4}
-    .ind-actions-title{font-size:10px;font-weight:900;color:#a8b0ac;letter-spacing:.65px;text-transform:uppercase;margin:14px 2px 7px;padding-top:11px;border-top:1px solid #26342e}
-    div[data-testid="stExpander"]{margin-top:6px!important;margin-bottom:6px!important}
-    div[data-testid="stExpander"] details summary{min-height:46px!important;display:flex!important;align-items:center!important}
-    .ind-empty{height:150px;display:flex;align-items:center;justify-content:center;color:#7f8a85;font-size:11px;border:1px solid #26342e;border-radius:11px;background:#0b100e;margin-bottom:0}
+    /* Gestão Operacional: identidade própria com tipografia legível e espaçamento equilibrado */
+    .ind-page-title{font-size:24px;font-weight:850;color:#f4f5f4;text-transform:uppercase;letter-spacing:-.2px;margin:4px 0 5px}
+    .ind-page-sub{font-size:13px;color:#b4bfb7;margin-bottom:16px}
+    .ind-section-title{font-size:18px;font-weight:850;color:#ffd43d;text-transform:uppercase;letter-spacing:.2px;margin:2px 0 15px;padding:0 2px}
+    .ind-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px;margin:4px 0 16px}
+    .ind-kpi{position:relative;min-width:0;min-height:105px;border:1px solid #34443a;border-radius:13px;background:linear-gradient(140deg,#171f1a,#101714);padding:16px 18px;box-sizing:border-box;overflow:hidden}
+    .ind-kpi:after{content:"";position:absolute;width:76px;height:76px;border-radius:50%;right:-30px;bottom:-40px;background:rgba(255,212,61,.04);pointer-events:none}
+    .ind-kpi-label{font-size:11px;font-weight:800;color:#b4c0b7;letter-spacing:.6px;text-transform:uppercase}
+    .ind-kpi-value{font-size:30px;line-height:1.13;font-weight:900;color:#f4f5f4;margin-top:8px;font-variant-numeric:tabular-nums}
+    .ind-kpi-sub{font-size:11px;color:#acb6af;margin-top:6px;line-height:1.4}
+    .ind-status{display:flex;align-items:center;gap:14px}.ind-status:after{background:rgba(34,197,94,.06)}
+    .ind-status.bad:after{background:rgba(255,77,79,.06)}.ind-status.neutral:after{background:rgba(140,150,145,.05)}
+    .ind-status-arrow{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(34,197,94,.12);color:#59de88;font-size:23px;font-weight:900;flex:0 0 42px}
+    .ind-status.bad .ind-status-arrow{background:rgba(255,77,79,.12);color:#ff7779}.ind-status.neutral .ind-status-arrow{background:rgba(140,150,145,.12);color:#bec7bf}
+    .ind-status-text{font-size:16px;font-weight:850;color:#59de88;margin-top:7px;line-height:1.25}.ind-status.bad .ind-status-text{color:#ff7779}.ind-status.neutral .ind-status-text{color:#c3cdc5}
+    .ind-chart-head{display:flex;justify-content:space-between;align-items:center;gap:16px;border-bottom:1px solid #2c3a32;padding:0 1px 13px;margin:0 0 4px}
+    .ind-chart-title{font-size:14px;font-weight:850;color:#eef3ef}
+    .ind-legend{display:flex;align-items:center;gap:18px;margin:0;font-size:12px;color:#bac6bd}
+    .ind-legend span{display:flex;align-items:center;gap:7px}
+    .ind-dot{display:inline-block;width:17px;height:5px;border-radius:6px}
+    .ind-dot.result{background:#ffd43d}.ind-dot.target{background:#f4f5f4}
+    .ind-actions-title{font-size:12px;font-weight:850;color:#bec8c1;letter-spacing:.5px;text-transform:uppercase;margin:18px 2px 10px;padding-top:15px;border-top:1px solid #2c3a32}
+    div[data-testid="stExpander"]{margin-top:8px!important;margin-bottom:8px!important}
+    div[data-testid="stExpander"] details summary{min-height:48px!important;display:flex!important;align-items:center!important}
+    .ind-empty{height:160px;display:flex;align-items:center;justify-content:center;color:#bdc6bf;font-size:13px;border-radius:10px;background:#101714;margin-bottom:0}
     .ind-export{display:flex;justify-content:flex-end;margin:0 0 14px}
-    .ind-export-label{font-size:10px;color:#8f9994;text-transform:uppercase;letter-spacing:.35px;margin:7px 0 4px;text-align:right}
-    div[data-testid="stPlotlyChart"]{margin-top:-2px!important;margin-bottom:-4px!important}
-    div[data-testid="stVerticalBlockBorderWrapper"]{border-color:#34413b!important;background:linear-gradient(145deg,#101513,#0b0f0e)!important;border-radius:16px!important}
-    @media(max-width:900px){.ind-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
-    @media(max-width:620px){.ind-section-title{font-size:14px}.ind-page-title{font-size:19px}}
+    .ind-export-label{font-size:12px;color:#b6c1b9;text-transform:uppercase;letter-spacing:.35px;margin:14px 0 7px;text-align:right}
+    div[data-testid="stPlotlyChart"]{margin-top:0!important;margin-bottom:0!important}
+    div[data-testid="stVerticalBlockBorderWrapper"]{border-color:#34443a!important;background:linear-gradient(145deg,#111915,#0b100e)!important;border-radius:15px!important}
+    @media(max-width:1080px){.ind-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media(max-width:670px){.ind-section-title{font-size:16px}.ind-kpi{padding:13px 14px;min-height:98px}.ind-kpi-value{font-size:25px}.ind-chart-head{flex-wrap:wrap;gap:8px}.ind-legend{font-size:11px}}
+    @media(max-width:420px){.ind-kpis{grid-template-columns:1fr}.ind-kpi{min-height:92px}}
     </style>''', unsafe_allow_html=True)
 
     for i, (name, rows) in enumerate(groups.items(), 1):
