@@ -32,6 +32,8 @@ _source = _original.read_text(encoding="utf-8")
 _import_anchor = "from indicadores_dashboard import render_indicadores\n"
 _access_import = (
     "from controle_acesso import render_login, permissao, render_admin_usuarios, render_usuario_sidebar\n"
+    "from setta_visual import centralized_page_icon\n"
+    "from ui_refinements import apply_ui_refinements\n"
 )
 if _import_anchor not in _source:
     raise RuntimeError("Ponto de importação do controle de acesso não encontrado.")
@@ -43,7 +45,7 @@ _page_config_anchor = (
 )
 if _page_config_anchor not in _source:
     raise RuntimeError("Configuração principal do Streamlit não encontrada.")
-_page_config_login = 'st.set_page_config(page_title="GESTÃO | SETTA", page_icon="setta_favicon.png", layout="wide")\n'
+_page_config_login = 'st.set_page_config(page_title="GESTÃO | SETTA", page_icon=centralized_page_icon(), layout="wide")\n'
 _source = _source.replace(
     _page_config_anchor,
     _page_config_login + "\n_acesso_client,_acesso_perfil=render_login()\n",
@@ -102,6 +104,16 @@ _config_replacement = '''elif pagina=="configuracoes":
 if _config_anchor not in _source:
     raise RuntimeError("Tela de configurações não encontrada para integração de usuários.")
 _source = _source.replace(_config_anchor, _config_replacement, 1)
+
+# Acabamento visual carregado após o CSS original para preservar o estilo próprio.
+_ui_anchor = '@st.cache_data(ttl=120,show_spinner=False)\ndef rows('
+if _ui_anchor not in _source:
+    raise RuntimeError("Ponto de aplicação dos refinamentos visuais não encontrado.")
+_source = _source.replace(
+    _ui_anchor,
+    'apply_ui_refinements(st, primary=PRIMARY, light=IS_LIGHT)\n\n' + _ui_anchor,
+    1,
+)
 
 # -----------------------------------------------------------------------------
 # Fotos de colaboradores
