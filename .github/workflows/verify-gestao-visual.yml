@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "streamlit_app.py"
+      - "controle_acesso.py"
       - "streamlit_app_original.py"
       - "setta_visual.py"
       - "ui_refinements.py"
@@ -14,6 +15,7 @@ on:
   pull_request:
     paths:
       - "streamlit_app.py"
+      - "controle_acesso.py"
       - "streamlit_app_original.py"
       - "setta_visual.py"
       - "ui_refinements.py"
@@ -35,6 +37,6 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compilar módulos alterados
-        run: python -m py_compile streamlit_app.py streamlit_app_original.py setta_visual.py ui_refinements.py indicadores_dashboard.py
+        run: python -m py_compile streamlit_app.py streamlit_app_original.py setta_visual.py ui_refinements.py indicadores_dashboard.py controle_acesso.py
       - name: Executar testes de regressão da interface
         run: python scripts/test_ui_favicon_and_layout.py
