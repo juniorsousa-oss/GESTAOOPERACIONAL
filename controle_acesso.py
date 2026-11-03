@@ -4,7 +4,6 @@ import os
 from typing import Any
 
 import streamlit as st
-import streamlit.components.v1 as components
 from supabase import Client, create_client
 
 PROJECT_URL = "https://cuixazpxkvniqldmmnth.supabase.co"
@@ -201,66 +200,6 @@ def limpar_sessao() -> None:
         st.session_state.pop(key, None)
 
 
-
-def _habilitar_autofill_login() -> None:
-    """Marca os campos de login para gerenciadores de senha do navegador/iOS."""
-    components.html(
-        """
-        <script>
-        (() => {
-          const doc = window.parent.document;
-          const apply = () => {
-            const box = doc.querySelector('div[data-testid="stForm"]');
-            if (!box) return false;
-            const inputs = Array.from(box.querySelectorAll('input'));
-            const user = inputs.find((el) => el.type !== 'password');
-            const pass = inputs.find((el) => el.type === 'password');
-
-            if (user) {
-              user.setAttribute('autocomplete', 'username');
-              user.setAttribute('name', 'username');
-              user.setAttribute('id', 'username');
-              user.setAttribute('inputmode', 'email');
-              user.setAttribute('autocapitalize', 'none');
-              user.setAttribute('autocorrect', 'off');
-              user.setAttribute('spellcheck', 'false');
-              user.setAttribute('aria-label', 'Usuário');
-            }
-            if (pass) {
-              pass.setAttribute('autocomplete', 'current-password');
-              pass.setAttribute('name', 'password');
-              pass.setAttribute('id', 'current-password');
-              pass.setAttribute('autocapitalize', 'none');
-              pass.setAttribute('autocorrect', 'off');
-              pass.setAttribute('spellcheck', 'false');
-              pass.setAttribute('aria-label', 'Senha');
-            }
-
-            const htmlForm = box.querySelector('form') || box.closest('form');
-            if (htmlForm) {
-              htmlForm.setAttribute('autocomplete', 'on');
-              htmlForm.setAttribute('name', 'login');
-              htmlForm.setAttribute('id', 'login-form');
-            }
-            return Boolean(user && pass);
-          };
-
-          apply();
-          let attempts = 0;
-          const timer = setInterval(() => {
-            attempts += 1;
-            if (apply() || attempts > 30) clearInterval(timer);
-          }, 100);
-
-          const observer = new MutationObserver(() => apply());
-          observer.observe(doc.body, {childList: true, subtree: true});
-          setTimeout(() => observer.disconnect(), 5000);
-        })();
-        </script>
-        """,
-        height=0,
-        width=0,
-    )
 
 def render_login() -> tuple[Client | None, dict[str, Any] | None]:
     client = cliente_autenticado()
@@ -572,11 +511,9 @@ def render_login() -> tuple[Client | None, dict[str, Any] | None]:
     )
 
     with st.form("form_login_gestao"):
-        email = st.text_input("Usuário", placeholder="Digite seu usuário", key="acesso_email_login")
-        senha = st.text_input("Senha", type="password", placeholder="Digite sua senha", key="acesso_senha_login")
+        email = st.text_input("Usuário", placeholder="Digite seu usuário", key="acesso_email_login", autocomplete="username")
+        senha = st.text_input("Senha", type="password", placeholder="Digite sua senha", key="acesso_senha_login", autocomplete="current-password")
         entrar = st.form_submit_button("ENTRAR", use_container_width=True)
-
-    _habilitar_autofill_login()
 
     if entrar:
         client, erro = autenticar(email, senha)
