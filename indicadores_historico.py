@@ -238,6 +238,13 @@ def _excel_snapshot(payload_json: str, meta: float, versao: int):
 @st.fragment
 def render_historico_otif():
     with st.expander("CONSULTAR · HISTÓRICO DETALHADO OTIF", expanded=False):
+        if not st.toggle(
+            "CARREGAR SNAPSHOTS PARA CONSULTA",
+            key="otif_historico_ativo",
+            value=False,
+            help="Carrega as versões históricas somente quando necessário.",
+        ):
+            return
         st.caption(
             "Cada registro confirmado gera uma versão imutável da memória de cálculo. "
             "A consulta abaixo não depende de reenviar os relatórios de origem."
