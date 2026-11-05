@@ -168,6 +168,12 @@ def _chart(rows, title, chart_key):
     return None
 
 
+def _alterar_visao_indicador(state_key: str, selected_key: str, value: str) -> None:
+    """Atualiza estado ANTES do rerun natural do botão, sem segundo rerun."""
+    st.session_state[state_key] = value
+    st.session_state[selected_key] = None
+
+
 def _render_indicator(name, rows, index):
     state_key = f"ind_view_{index}"
     selected_key = f"ind_selected_{index}"
@@ -186,17 +192,15 @@ def _render_indicator(name, rows, index):
 
         c1, c2, c3 = st.columns([1, 1, 4.5], gap="small")
         with c1:
-            if st.button("VISÃO TOTAL", key=f"ind_all_{index}", use_container_width=True,
-                         type="primary" if view == "all" else "secondary"):
-                st.session_state[state_key] = "all"
-                st.session_state[selected_key] = None
-                st.rerun()
+            st.button("VISÃO TOTAL", key=f"ind_all_{index}", use_container_width=True,
+                      type="primary" if view == "all" else "secondary",
+                      on_click=_alterar_visao_indicador,
+                      args=(state_key, selected_key, "all"))
         with c2:
-            if st.button("POR MÊS", key=f"ind_month_{index}", use_container_width=True,
-                         type="primary" if view == "month" else "secondary"):
-                st.session_state[state_key] = "month"
-                st.session_state[selected_key] = None
-                st.rerun()
+            st.button("POR MÊS", key=f"ind_month_{index}", use_container_width=True,
+                      type="primary" if view == "month" else "secondary",
+                      on_click=_alterar_visao_indicador,
+                      args=(state_key, selected_key, "month"))
 
         selected_index = st.session_state.get(selected_key)
         if selected_index is not None and selected_index >= len(chart_rows):
