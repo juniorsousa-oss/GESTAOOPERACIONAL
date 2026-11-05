@@ -43,6 +43,12 @@ assert "axis_max = max(105.0" in dashboard
 # Autofill nativo precisa declarar que é uma senha existente, não cadastro novo.
 assert 'key="acesso_email_login", autocomplete="username"' in access
 assert 'key="acesso_senha_login", autocomplete="current-password"' in access
+# Autofill de terceiros não deve depender de atualização atômica do st.form.
+assert 'with st.container(key="gestao_login_fields")' in access
+assert 'with st.form("form_login_gestao")' not in access
+assert 'st.button("ENTRAR", use_container_width=True, key="gestao_login_submit")' in access
+assert ".st-key-gestao_login_fields" in access
+assert 'div[data-testid="stForm"]' not in access
 assert "_habilitar_autofill_login" not in access
 assert "components.html(" not in access
 assert "sign_in_with_password" in access
