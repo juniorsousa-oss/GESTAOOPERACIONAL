@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 from typing import Any
 
 import streamlit as st
@@ -50,7 +51,17 @@ SESSION_KEYS = (
     "acesso_user_id",
     "acesso_email",
     "acesso_perfil",
+    "_acesso_cliente_cached",
+    "_acesso_cliente_token",
+    "_acesso_cliente_verificado_em",
+    "_acesso_perfil_cache_user_id",
+    "_acesso_perfil_verificado_em",
 )
+
+# Cache somente na sessão do navegador; nunca compartilhar o cliente
+# autenticado entre usuários (st.cache_resource seria inseguro).
+AUTH_VERIFY_SECONDS = 20.0
+PERFIL_VERIFY_SECONDS = 15.0
 
 
 def _secret(name: str, default: str = "") -> str:
@@ -88,16 +99,30 @@ def cliente_autenticado() -> Client | None:
     refresh_token = st.session_state.get("acesso_refresh_token")
     if not access_token or not refresh_token:
         return None
+
+    # Na navegação comum (botões, abas, campos), st.session_state sobrevive
+    # ao rerun. O cliente permanece isolado por sessão; não reabrimos três
+    # conexões ao Supabase em cada clique. A validade é reverificada
+    # periodicamente e os tokens renovados continuam sincronizados.
+    agora = time.monotonic()
+    cached = st.session_state.get("_acesso_cliente_cached")
+    if (cached is not None
+            and st.session_state.get("_acesso_cliente_token") == access_token
+            and agora - float(st.session_state.get("_acesso_cliente_verificado_em") or 0) < AUTH_VERIFY_SECONDS):
+        return cached
     try:
-        client = criar_cliente_sessao()
+        client = cached if cached is not None else criar_cliente_sessao()
         response = client.auth.set_session(access_token, refresh_token)
         _salvar_tokens(response)
         verified = client.auth.get_user()
         user = getattr(verified, "user", None)
         if user is None:
-            return None
+            raise RuntimeError("Sessão não validada.")
         st.session_state.acesso_user_id = str(getattr(user, "id", "") or "")
         st.session_state.acesso_email = str(getattr(user, "email", "") or "")
+        st.session_state["_acesso_cliente_cached"] = client
+        st.session_state["_acesso_cliente_token"] = st.session_state.get("acesso_access_token")
+        st.session_state["_acesso_cliente_verificado_em"] = agora
         return client
     except Exception:
         limpar_sessao()
@@ -115,6 +140,9 @@ def autenticar(email: str, senha: str) -> tuple[Client | None, str | None]:
             raise RuntimeError("Usuário não validado pelo Supabase Auth.")
         st.session_state.acesso_user_id = str(getattr(user, "id", "") or "")
         st.session_state.acesso_email = str(getattr(user, "email", "") or "")
+        st.session_state["_acesso_cliente_cached"] = client
+        st.session_state["_acesso_cliente_token"] = st.session_state.get("acesso_access_token")
+        st.session_state["_acesso_cliente_verificado_em"] = time.monotonic()
         return client, None
     except Exception as exc:
         limpar_sessao()
@@ -149,6 +177,13 @@ def obter_ou_criar_perfil(client: Client, nome_padrao: str = "") -> dict[str, An
     if not user_id or not email:
         return None
 
+    atual = time.monotonic()
+    perfil_cache = st.session_state.get("acesso_perfil")
+    if (isinstance(perfil_cache, dict)
+            and st.session_state.get("_acesso_perfil_cache_user_id") == user_id
+            and atual - float(st.session_state.get("_acesso_perfil_verificado_em") or 0) < PERFIL_VERIFY_SECONDS):
+        return perfil_cache
+
     result = (
         client.table("almox_usuarios_acesso")
         .select("user_id,email,nome,perfil,ativo,permissoes")
@@ -160,6 +195,8 @@ def obter_ou_criar_perfil(client: Client, nome_padrao: str = "") -> dict[str, An
     if rows:
         perfil = rows[0]
         st.session_state.acesso_perfil = perfil
+        st.session_state["_acesso_perfil_cache_user_id"] = user_id
+        st.session_state["_acesso_perfil_verificado_em"] = atual
         return perfil
 
     nome = (nome_padrao or email.split("@", 1)[0]).strip()
@@ -176,6 +213,8 @@ def obter_ou_criar_perfil(client: Client, nome_padrao: str = "") -> dict[str, An
         rows = created.data or []
         perfil = rows[0] if rows else payload
         st.session_state.acesso_perfil = perfil
+        st.session_state["_acesso_perfil_cache_user_id"] = user_id
+        st.session_state["_acesso_perfil_verificado_em"] = atual
         return perfil
     except Exception:
         return None
@@ -201,6 +240,25 @@ def limpar_sessao() -> None:
 
 
 
+@st.cache_data(ttl=600, max_entries=1, show_spinner=False)
+def carregar_imagem_login() -> str:
+    """Evita baixar a mesma imagem em cada digitação no login."""
+    try:
+        publico = criar_cliente_sessao()
+        resultado = (
+            publico.table("mrp_app_config")
+            .select("login_image_data")
+            .eq("id", 1)
+            .limit(1)
+            .execute()
+        )
+        if resultado.data:
+            return str(resultado.data[0].get("login_image_data") or "")
+    except Exception:
+        pass
+    return ""
+
+
 def render_login() -> tuple[Client | None, dict[str, Any] | None]:
     client = cliente_autenticado()
     if client is not None:
@@ -215,20 +273,7 @@ def render_login() -> tuple[Client | None, dict[str, Any] | None]:
 
     # Reaproveita a mesma imagem de login configurada no MRP para manter
     # identidade visual consistente entre os aplicativos.
-    image = ""
-    try:
-        publico = criar_cliente_sessao()
-        resultado = (
-            publico.table("mrp_app_config")
-            .select("login_image_data")
-            .eq("id", 1)
-            .limit(1)
-            .execute()
-        )
-        if resultado.data:
-            image = str(resultado.data[0].get("login_image_data") or "")
-    except Exception:
-        image = ""
+    image = carregar_imagem_login()
 
     image_html = (
         f'<div class="setta-login-image"><img src="{image}" /></div>'
