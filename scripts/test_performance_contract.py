@@ -48,4 +48,11 @@ for code, gate, expensive in (
     assert gate in code, gate
     assert code.index(gate) < code.index(expensive), expensive
 
+assert "sys.modules.pop(_module_name, None)" not in source("streamlit_app.py")
+assert "importlib.reload(_module)" in source("streamlit_app.py")
+assert "@st.cache_data(ttl=120, max_entries=1, show_spinner=False)" in app
+assert "carregar_configuracoes.clear()" in app
+assert "def logo_sidebar_compacta(" in app
+assert "logo_visual,logo_visual_mime=logo_sidebar_compacta" in app
+
 print("GESTAO_OPERACIONAL_PERFORMANCE_CONTRACT_OK")
