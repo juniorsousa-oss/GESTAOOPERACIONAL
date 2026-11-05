@@ -4,8 +4,10 @@ import importlib
 import sys
 import re
 
-# Garante que atualizacoes dos modulos sejam carregadas em cada execucao do app,
-# mesmo quando o ambiente do Streamlit reaproveita o mesmo processo Python.
+# Não descartar e reimportar todos os módulos em cada rerun.
+# Streamlit reexecuta o arquivo principal a cada clique. Reimportar 8 módulos
+# em toda interação causava travamentos perceptíveis, especialmente no painel.
+# Só invalidamos o módulo se seu arquivo realmente mudou em disco.
 for _module_name in (
     "indicadores_dashboard",
     "indicadores_pdf",
@@ -16,8 +18,21 @@ for _module_name in (
     "indicadores_historico",
     "controle_acesso",
 ):
-    sys.modules.pop(_module_name, None)
-importlib.invalidate_caches()
+    _module = sys.modules.get(_module_name)
+    if _module is None:
+        continue
+    _path = getattr(_module, "__file__", None)
+    if not _path:
+        continue
+    try:
+        _modificado_em = Path(_path).stat().st_mtime_ns
+    except OSError:
+        continue
+    _carregado_em = getattr(_module, "_setta_mtime_ns", None)
+    if _carregado_em is not None and _carregado_em != _modificado_em:
+        importlib.invalidate_caches()
+        _module = importlib.reload(_module)
+    _module._setta_mtime_ns = _modificado_em
 
 # Executa a versão original do aplicativo aplicando otimizações e camadas de
 # controle de acesso sem reescrever a base funcional preservada.
