@@ -561,6 +561,19 @@ def _excel_auditoria_acuracia(resultado: dict) -> bytes:
 @st.fragment
 def render_alimentacao_acuracia(indicadores):
     with st.expander("ALIMENTAR · ACURÁCIA DE ESTOQUE", expanded=False):
+        # Expander fechado NÃO impede o Streamlit de executar seu conteúdo.
+        # Portanto, relatórios grandes só são baixados após ação explícita.
+        if not st.toggle(
+            "ATIVAR APURAÇÃO / ATUALIZAR BASES",
+            key="acuracia_apuracao_ativa",
+            value=False,
+            help="Consulta Analítico e Movimentação apenas enquanto esta função estiver ativada.",
+        ):
+            st.caption(
+                "O histórico fechado acima já está disponível. Ative apenas "
+                "quando precisar recalcular ou auditar as bases da Central."
+            )
+            return
         try:
             state = status_acuracia_central()
             fontes = state.get("sources") or {}
