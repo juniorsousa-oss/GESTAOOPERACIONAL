@@ -71,6 +71,7 @@ TEXTOS_PADRAO={
 FONTES_PADRAO={"menu":"Arial","titulo":"Arial","subtitulo":"Arial"}
 FONTES=["Arial","Verdana","Trebuchet MS","Georgia","Courier New","Times New Roman"]
 
+@st.cache_data(ttl=120, max_entries=1, show_spinner=False)
 def carregar_configuracoes():
     try:
         resultado=get_client().table("almox_app_state").select("estado").eq("id","global").limit(1).execute()
@@ -89,9 +90,33 @@ def carregar_configuracoes():
 
 def salvar_configuracoes(config):
     try:
-        return bool(get_client().table("almox_app_state").upsert({"id":"global","estado":config},on_conflict="id").execute().data)
+        sucesso=bool(get_client().table("almox_app_state").upsert({"id":"global","estado":config},on_conflict="id").execute().data)
+        if sucesso:
+            carregar_configuracoes.clear()
+        return sucesso
     except Exception:
         return False
+
+@st.cache_data(ttl=3600, max_entries=4, show_spinner=False)
+def logo_sidebar_compacta(logo_b64,logo_mime=None):
+    """Miniatura PNG para o menu: mantém original intacto para configurações."""
+    if not logo_b64:
+        return "", logo_mime or "image/png"
+    mime=logo_mime or "image/png"
+    if mime.lower()=="image/svg+xml" or len(logo_b64)<45000:
+        return logo_b64,mime
+    try:
+        origem=Image.open(BytesIO(base64.b64decode(logo_b64)))
+        origem.thumbnail((420,210))
+        if origem.mode not in ("RGB","RGBA"):
+            origem=origem.convert("RGBA")
+        destino=BytesIO()
+        origem.save(destino,format="PNG",optimize=True)
+        compacta=base64.b64encode(destino.getvalue()).decode("ascii")
+        return compacta,"image/png"
+    except Exception:
+        return logo_b64,mime
+
 
 @st.cache_data(show_spinner=False)
 def detectar_cor_fundo_logo(logo_b64,logo_mime=None):
@@ -254,8 +279,9 @@ if st.session_state.pagina=="carreira":st.session_state.pagina="equipes"
 with st.sidebar:
     logo_b64=config.get("logo_base64")
     if logo_b64:
-        logo_bg=detectar_cor_fundo_logo(logo_b64,config.get("logo_mime"));logo_border="#555555"
-        logo_html=f'<img class="sidebar-logo-img" src="data:{config.get("logo_mime") or "image/png"};base64,{logo_b64}" alt="Logo SETTA">'
+        logo_visual,logo_visual_mime=logo_sidebar_compacta(logo_b64,config.get("logo_mime"))
+        logo_bg=detectar_cor_fundo_logo(logo_visual,logo_visual_mime);logo_border="#555555"
+        logo_html=f'<img class="sidebar-logo-img" src="data:{logo_visual_mime};base64,{logo_visual}" alt="Logo SETTA">'
     else:logo_bg="#101513" if not IS_LIGHT else "#ffffff";logo_border="#e5e7eb";logo_html='<div class="sidebar-logo-placeholder">SUA LOGO AQUI<br>Configure em Configurações</div>'
     st.markdown(f'<div class="sidebar-logo-section"><div class="sidebar-logo-wrap" style="--logo-bg:{logo_bg};--logo-border:{logo_border};">{logo_html}</div></div>',unsafe_allow_html=True)
     for _id in paginas_ids:
