@@ -879,6 +879,20 @@ def render_alimentacao_entregas_v2(indicadores):
     tem_periodo_atual = periodo_fim_atual.month == hoje.month
 
     with st.expander("ALIMENTAR · ENTREGAS NO PRAZO / OTIF ALMOX", expanded=False):
+        # Fechar visualmente o expander não suspende o processamento.
+        # O modo de apuração fica desativado por padrão, evitando múltiplos
+        # downloads + Excel + gravações a cada clique no dashboard.
+        if not st.toggle(
+            "ATIVAR APURAÇÃO / ATUALIZAR BASES OTIF",
+            key="otif_apuracao_ativa",
+            value=False,
+            help="Ative quando for conferir, atualizar ou fechar a competência OTIF.",
+        ):
+            st.caption(
+                "O resultado já salvo permanece no gráfico. A apuração "
+                "detalhada só carrega as bases quando solicitada."
+            )
+            return
         periodo_txt = (
             f"01/{hoje.strftime('%m/%Y')} a {periodo_fim_atual.strftime('%d/%m/%Y')}"
             if tem_periodo_atual
