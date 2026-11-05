@@ -211,6 +211,16 @@ def rows(table,limit=500,order=None,desc=True,columns="*"):
     q=get_client().table(table).select(columns)
     if order:q=q.order(order,desc=desc)
     return q.limit(limit).execute().data or []
+
+@st.cache_data(ttl=15, max_entries=2, show_spinner=False)
+def indicadores_dashboard_atuais():
+    """Leitura leve com prazo curto: não consulta a Central a cada clique."""
+    return (
+        get_client().table("almox_indicadores")
+        .select("id,competencia,categoria,indicador,valor,meta,unidade,observacao")
+        .order("competencia",desc=True).limit(500)
+        .execute().data or []
+    )
 def df(data):return pd.DataFrame(data) if data else pd.DataFrame()
 
 def foto_html(c,tamanho=72):
@@ -264,14 +274,9 @@ except Exception:conectado=False
 if not conectado:st.error("Supabase ainda não está configurado no ambiente do Streamlit.");st.stop()
 
 if pagina=="indicadores":
-    # Indicadores são atualizados também por outros aplicativos SETTA.
-    # Evitar o cache geral de 120 s: cada abertura/rerun deve ler o
-    # fechamento mais recente, inclusive lançamentos vindos de fora.
-    indicadores=(
-        get_client().table("almox_indicadores")
-        .select("*").order("competencia",desc=True).limit(500)
-        .execute().data or []
-    )
+    # Indicadores externos ao app aparecem em até 15 segundos;
+    # ações repetidas reutilizam a consulta, sem bloquear a interface.
+    indicadores=indicadores_dashboard_atuais()
     render_indicadores(indicadores)
 elif pagina=="historico":
     st.markdown(f'<div class="section">{txt("secao_historico")}</div>',unsafe_allow_html=True);_setta_dataframe(df(rows("almox_historico",order="criado_em")),use_container_width=True,hide_index=True)
