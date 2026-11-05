@@ -264,7 +264,14 @@ except Exception:conectado=False
 if not conectado:st.error("Supabase ainda não está configurado no ambiente do Streamlit.");st.stop()
 
 if pagina=="indicadores":
-    indicadores=rows("almox_indicadores",order="competencia")
+    # Indicadores são atualizados também por outros aplicativos SETTA.
+    # Evitar o cache geral de 120 s: cada abertura/rerun deve ler o
+    # fechamento mais recente, inclusive lançamentos vindos de fora.
+    indicadores=(
+        get_client().table("almox_indicadores")
+        .select("*").order("competencia",desc=True).limit(500)
+        .execute().data or []
+    )
     render_indicadores(indicadores)
 elif pagina=="historico":
     st.markdown(f'<div class="section">{txt("secao_historico")}</div>',unsafe_allow_html=True);_setta_dataframe(df(rows("almox_historico",order="criado_em")),use_container_width=True,hide_index=True)
