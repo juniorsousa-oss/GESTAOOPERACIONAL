@@ -323,7 +323,7 @@ def render_login() -> tuple[Client | None, dict[str, Any] | None]:
             display:none !important;
           }}
 
-          div[data-testid="stForm"] {{
+          .st-key-gestao_login_fields {{
             position:fixed !important;
             left:50% !important;
             top:calc(50% + 60px) !important;
@@ -339,19 +339,19 @@ def render_login() -> tuple[Client | None, dict[str, Any] | None]:
             box-shadow:none !important;
             z-index:20 !important;
           }}
-          div[data-testid="stForm"] label {{
+          .st-key-gestao_login_fields label {{
             color:#202020 !important;
             font-size:12px !important;
             line-height:17px !important;
             font-weight:650 !important;
             margin-bottom:5px !important;
           }}
-          div[data-testid="stForm"] [data-testid="stTextInput"] {{
+          .st-key-gestao_login_fields [data-testid="stTextInput"] {{
             width:100% !important;
             margin-bottom:3px !important;
           }}
 
-          div[data-testid="stForm"] [data-baseweb="input"] {{
+          .st-key-gestao_login_fields [data-baseweb="input"] {{
             width:100% !important;
             height:35px !important;
             min-height:35px !important;
@@ -365,7 +365,7 @@ def render_login() -> tuple[Client | None, dict[str, Any] | None]:
             overflow:hidden !important;
             color:#202020 !important;
           }}
-          div[data-testid="stForm"] [data-baseweb="base-input"] {{
+          .st-key-gestao_login_fields [data-baseweb="base-input"] {{
             width:100% !important;
             height:35px !important;
             min-height:35px !important;
@@ -375,7 +375,7 @@ def render_login() -> tuple[Client | None, dict[str, Any] | None]:
             background:#f0f2f6 !important;
             color:#202020 !important;
           }}
-          div[data-testid="stForm"] [data-baseweb="input"] > div {{
+          .st-key-gestao_login_fields [data-baseweb="input"] > div {{
             height:35px !important;
             min-height:35px !important;
             display:flex !important;
@@ -384,7 +384,7 @@ def render_login() -> tuple[Client | None, dict[str, Any] | None]:
             background:#f0f2f6 !important;
             color:#202020 !important;
           }}
-          div[data-testid="stForm"] input {{
+          .st-key-gestao_login_fields input {{
             width:100% !important;
             height:35px !important;
             min-height:35px !important;
@@ -401,7 +401,7 @@ def render_login() -> tuple[Client | None, dict[str, Any] | None]:
             -webkit-text-fill-color:#202020 !important;
             font-size:13px !important;
           }}
-          div[data-testid="stForm"] [data-testid="stTextInput"] [data-baseweb="input"] button {{
+          .st-key-gestao_login_fields [data-testid="stTextInput"] [data-baseweb="input"] button {{
             width:38px !important;
             min-width:38px !important;
             height:35px !important;
@@ -421,22 +421,22 @@ def render_login() -> tuple[Client | None, dict[str, Any] | None]:
             justify-content:center !important;
             box-sizing:border-box !important;
           }}
-          div[data-testid="stForm"] [data-testid="stTextInput"] [data-baseweb="input"] button:hover {{
+          .st-key-gestao_login_fields [data-testid="stTextInput"] [data-baseweb="input"] button:hover {{
             background:transparent !important;
             border:0 !important;
             color:#050505 !important;
           }}
-          div[data-testid="stForm"] [data-testid="stTextInput"] [data-baseweb="input"] button svg {{
+          .st-key-gestao_login_fields [data-testid="stTextInput"] [data-baseweb="input"] button svg {{
             width:17px !important;
             height:17px !important;
             margin:0 !important;
             display:block !important;
           }}
-          div[data-testid="stForm"] input::placeholder {{
+          .st-key-gestao_login_fields input::placeholder {{
             color:#a6adb8 !important;
             opacity:1 !important;
           }}
-          div[data-testid="stForm"] input:focus {{
+          .st-key-gestao_login_fields input:focus {{
             outline:none !important;
             border:0 !important;
             box-shadow:none !important;
@@ -444,14 +444,14 @@ def render_login() -> tuple[Client | None, dict[str, Any] | None]:
             color:#202020 !important;
             -webkit-text-fill-color:#202020 !important;
           }}
-          div[data-testid="stForm"] input:-webkit-autofill,
-          div[data-testid="stForm"] input:-webkit-autofill:hover,
-          div[data-testid="stForm"] input:-webkit-autofill:focus {{
+          .st-key-gestao_login_fields input:-webkit-autofill,
+          .st-key-gestao_login_fields input:-webkit-autofill:hover,
+          .st-key-gestao_login_fields input:-webkit-autofill:focus {{
             -webkit-box-shadow:0 0 0 1000px #f0f2f6 inset !important;
             -webkit-text-fill-color:#202020 !important;
           }}
 
-          div[data-testid="stForm"] [data-testid="stFormSubmitButton"] button {{
+          .st-key-gestao_login_fields [data-testid="stButton"] button {{
             position:static !important;
             width:100% !important;
             height:50px !important;
@@ -469,11 +469,11 @@ def render_login() -> tuple[Client | None, dict[str, Any] | None]:
             align-items:center !important;
             justify-content:center !important;
           }}
-          div[data-testid="stForm"] [data-testid="stFormSubmitButton"] button:hover {{
+          .st-key-gestao_login_fields [data-testid="stButton"] button:hover {{
             background:#171717 !important;
             border-color:#171717 !important;
           }}
-          div[data-testid="stForm"] [data-testid="stFormSubmitButton"] button p {{
+          .st-key-gestao_login_fields [data-testid="stButton"] button p {{
             color:#fff !important;
           }}
 
@@ -492,7 +492,7 @@ def render_login() -> tuple[Client | None, dict[str, Any] | None]:
               width:360px !important;
               height:500px !important;
             }}
-            div[data-testid="stForm"] {{
+            .st-key-gestao_login_fields {{
               width:312px !important;
             }}
             div[data-testid="stAlert"] {{
@@ -510,10 +510,21 @@ def render_login() -> tuple[Client | None, dict[str, Any] | None]:
         unsafe_allow_html=True,
     )
 
-    with st.form("form_login_gestao"):
-        email = st.text_input("Usuário", placeholder="Digite seu usuário", key="acesso_email_login", autocomplete="username")
-        senha = st.text_input("Senha", type="password", placeholder="Digite sua senha", key="acesso_senha_login", autocomplete="current-password")
-        entrar = st.form_submit_button("ENTRAR", use_container_width=True)
+    # O Streamlit agrupa widgets de st.form em uma atualização única. Alguns
+    # gerenciadores de senhas preenchem o DOM sem sincronizar os dois valores
+    # com o estado desse formulário. Usar inputs nativos independentes
+    # mantém a sincronização por campo, sem interceptar nem persistir senhas.
+    # autocomplete é um indicativo ao navegador; o usuário decide se salva.
+    with st.container(key="gestao_login_fields"):
+        email = st.text_input(
+            "Usuário", placeholder="Digite seu usuário",
+            key="acesso_email_login", autocomplete="username",
+        )
+        senha = st.text_input(
+            "Senha", type="password", placeholder="Digite sua senha",
+            key="acesso_senha_login", autocomplete="current-password",
+        )
+        entrar = st.button("ENTRAR", use_container_width=True, key="gestao_login_submit")
 
     if entrar:
         client, erro = autenticar(email, senha)
