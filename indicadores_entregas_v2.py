@@ -16,21 +16,30 @@ from indicadores_api import carregar_otif_central, rotulo_fonte, status_otif_cen
 
 INDICADOR = "ENTREGAS NO PRAZO"
 TZ_APP = ZoneInfo("America/Sao_Paulo")
-LOGIC_VERSION = "2026-11-06-otif-almox-necessidade-unica-v8"
+LOGIC_VERSION = "2026-11-06-otif-almox-solicitacoes-por-data-v9"
 TOL = 1e-9
 
 
 def normalizar_necessidade_relatorio_geral(rel: pd.DataFrame) -> pd.DataFrame:
-    """Uma necessidade por OP-produto; atendimentos por lote permanecem."""
+    """Uma necessidade por OP/produto/data, somando solicitacoes distintas.
+
+    Quantidades de atendimento/separacao seguem por linha de lote, sem
+    deduplicacao. Esta funcao exige a data de solicitacao ja normalizada.
+    """
     out = rel.copy()
+    chaves = ["Projeto_Código", "Data Solicitação"]
     primeiro_valor = out.groupby(
-        "Projeto_Código", sort=False
+        chaves, sort=False, dropna=False
     )["Qtd Necessária"].transform("first")
-    repetidas = out.duplicated("Projeto_Código", keep="first")
+    divergencia = (out["Qtd Necessária"] - primeiro_valor).abs() > TOL
+    if divergencia.any():
+        raise ValueError(
+            "Relatório Geral: mesma OP/produto/data apresenta quantidades "
+            "necessárias divergentes. Corrigir a origem antes de fechar OTIF."
+        )
+    repetidas = out.duplicated(chaves, keep="first")
     out["Qtd Necessária Fonte"] = out["Qtd Necessária"]
-    out["Necessidade divergente na origem"] = (
-        (out["Qtd Necessária Fonte"] - primeiro_valor).abs() > TOL
-    )
+    out["Necessidade divergente na origem"] = divergencia
     out.loc[repetidas, "Qtd Necessária"] = 0.0
     out["Linha de necessidade contabilizada"] = ~repetidas
     return out
@@ -422,10 +431,10 @@ def calcular_entregas_v2(
     rel["Qtd Necessária"] = _num_series(rel["Qtd Necessária"])
     rel["Qtd Atendida"] = _num_series(rel["Qtd Atendida"])
     rel["Qtd Atendida Efetiva"] = rel[["Qtd Necessária", "Qtd Atendida"]].min(axis=1)
-    # O total da necessidade aparece uma única vez; a soma do atendimento
-    # continua baseada nas linhas reais de separação e conferência.
-    rel = normalizar_necessidade_relatorio_geral(rel)
     rel["Data Solicitação"] = _to_dates(rel["Data Solicitação"]).dt.normalize()
+    # Uma linha por solicitacao (OP/produto/data), preservando outras datas.
+    # O atendimento continua somando as linhas reais por lote.
+    rel = normalizar_necessidade_relatorio_geral(rel)
     rel["Data Separação"] = _to_dates(rel["Data Separação"]).dt.normalize()
     rel["Data Conferência"] = _to_dates(rel["Data Conferência"]).dt.normalize()
     rel["Data CM"] = rel["Projeto"].map(cm_map)
