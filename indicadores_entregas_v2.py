@@ -377,16 +377,27 @@ def calcular_entregas_v2(
 
     # 4) RELATÓRIO GERAL — fonte mestre. Preserva todas as colunas para a auditoria.
     rel_raw = _read_excel(relatorio_file, sheet_name="Geral")
-    if rel_raw.shape[1] < 16:
-        raise ValueError("O Relatório Geral não possui as colunas esperadas até P.")
+    # Identificação por cabeçalho oficial, não por posição fixa. Suporta
+    # colunas temporárias de conferência A/B no arquivo bruto sem deslocar
+    # Projeto, Código e quantidades.
+    rel_raw.columns = [str(col).strip() for col in rel_raw.columns]
+    campos = {
+        "Projeto": "Projeto",
+        "Código": "Código",
+        "Data Solicitação": "Última solicitação",
+        "Qtd Necessária": "Qtd. necessária",
+        "Qtd Atendida": "Qtd. atendida",
+        "Data Separação": "Data de separação",
+        "Data Conferência": "Data de conferência",
+    }
+    faltantes = [col for col in campos.values() if col not in rel_raw.columns]
+    if faltantes:
+        raise ValueError(
+            "Relatório Geral com cabeçalho incompatível. Ausentes: "
+            + ", ".join(faltantes)
+        )
     rel = pd.DataFrame({
-        "Projeto": rel_raw.iloc[:, 0],
-        "Código": rel_raw.iloc[:, 3],
-        "Data Solicitação": rel_raw.iloc[:, 6],
-        "Qtd Necessária": rel_raw.iloc[:, 8],
-        "Qtd Atendida": rel_raw.iloc[:, 9],
-        "Data Separação": rel_raw.iloc[:, 13],
-        "Data Conferência": rel_raw.iloc[:, 15],
+        destino: rel_raw[origem] for destino, origem in campos.items()
     })
     rel.insert(0, "Linha Relatório Geral", range(2, len(rel) + 2))
     rel["Projeto"] = rel["Projeto"].map(_norm_project)
@@ -395,6 +406,17 @@ def calcular_entregas_v2(
     rel["Qtd Necessária"] = _num_series(rel["Qtd Necessária"])
     rel["Qtd Atendida"] = _num_series(rel["Qtd Atendida"])
     rel["Qtd Atendida Efetiva"] = rel[["Qtd Necessária", "Qtd Atendida"]].min(axis=1)
+    # A nova fonte repete a necessidade integral nas linhas de atendimento.
+    # Somente a primeira ocorrência de cada OP+produto compõe o total.
+    # Atendimento, separação e conferência continuam somados por lote.
+    rel["Qtd Necessária Fonte"] = rel["Qtd Necessária"]
+    primeira_necessidade = rel.groupby("Projeto_Código", sort=False)["Qtd Necessária"].transform("first")
+    rel["Necessidade divergente na origem"] = (
+        (rel["Qtd Necessária Fonte"] - primeira_necessidade).abs() > TOL
+    )
+    repetidas = rel.duplicated("Projeto_Código", keep="first")
+    rel.loc[repetidas, "Qtd Necessária"] = 0.0
+    rel["Linha de necessidade contabilizada"] = ~repetidas
     rel["Data Solicitação"] = _to_dates(rel["Data Solicitação"]).dt.normalize()
     rel["Data Separação"] = _to_dates(rel["Data Separação"]).dt.normalize()
     rel["Data Conferência"] = _to_dates(rel["Data Conferência"]).dt.normalize()
