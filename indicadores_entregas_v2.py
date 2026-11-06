@@ -16,7 +16,7 @@ from indicadores_api import carregar_otif_central, rotulo_fonte, status_otif_cen
 
 INDICADOR = "ENTREGAS NO PRAZO"
 TZ_APP = ZoneInfo("America/Sao_Paulo")
-LOGIC_VERSION = "2026-10-06-otif-almox-mensal-v7"
+LOGIC_VERSION = "2026-11-06-otif-almox-necessidade-unica-v8"
 TOL = 1e-9
 
 
