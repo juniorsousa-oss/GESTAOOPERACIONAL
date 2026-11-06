@@ -20,6 +20,22 @@ LOGIC_VERSION = "2026-10-06-otif-almox-mensal-v7"
 TOL = 1e-9
 
 
+def normalizar_necessidade_relatorio_geral(rel: pd.DataFrame) -> pd.DataFrame:
+    """Uma necessidade por OP-produto; atendimentos por lote permanecem."""
+    out = rel.copy()
+    primeiro_valor = out.groupby(
+        "Projeto_Código", sort=False
+    )["Qtd Necessária"].transform("first")
+    repetidas = out.duplicated("Projeto_Código", keep="first")
+    out["Qtd Necessária Fonte"] = out["Qtd Necessária"]
+    out["Necessidade divergente na origem"] = (
+        (out["Qtd Necessária Fonte"] - primeiro_valor).abs() > TOL
+    )
+    out.loc[repetidas, "Qtd Necessária"] = 0.0
+    out["Linha de necessidade contabilizada"] = ~repetidas
+    return out
+
+
 def _agora_local():
     return datetime.now(TZ_APP)
 
@@ -406,17 +422,9 @@ def calcular_entregas_v2(
     rel["Qtd Necessária"] = _num_series(rel["Qtd Necessária"])
     rel["Qtd Atendida"] = _num_series(rel["Qtd Atendida"])
     rel["Qtd Atendida Efetiva"] = rel[["Qtd Necessária", "Qtd Atendida"]].min(axis=1)
-    # A nova fonte repete a necessidade integral nas linhas de atendimento.
-    # Somente a primeira ocorrência de cada OP+produto compõe o total.
-    # Atendimento, separação e conferência continuam somados por lote.
-    rel["Qtd Necessária Fonte"] = rel["Qtd Necessária"]
-    primeira_necessidade = rel.groupby("Projeto_Código", sort=False)["Qtd Necessária"].transform("first")
-    rel["Necessidade divergente na origem"] = (
-        (rel["Qtd Necessária Fonte"] - primeira_necessidade).abs() > TOL
-    )
-    repetidas = rel.duplicated("Projeto_Código", keep="first")
-    rel.loc[repetidas, "Qtd Necessária"] = 0.0
-    rel["Linha de necessidade contabilizada"] = ~repetidas
+    # O total da necessidade aparece uma única vez; a soma do atendimento
+    # continua baseada nas linhas reais de separação e conferência.
+    rel = normalizar_necessidade_relatorio_geral(rel)
     rel["Data Solicitação"] = _to_dates(rel["Data Solicitação"]).dt.normalize()
     rel["Data Separação"] = _to_dates(rel["Data Separação"]).dt.normalize()
     rel["Data Conferência"] = _to_dates(rel["Data Conferência"]).dt.normalize()
