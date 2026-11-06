@@ -12,6 +12,8 @@ on:
       - "indicadores_dashboard.py"
       - "scripts/test_ui_favicon_and_layout.py"
       - "scripts/test_performance_contract.py"
+      - "scripts/test_relatorio_geral_necessidade.py"
+      - "indicadores_entregas_v2.py"
       - ".github/workflows/verify-gestao-visual.yml"
   pull_request:
     paths:
@@ -23,6 +25,8 @@ on:
       - "indicadores_dashboard.py"
       - "scripts/test_ui_favicon_and_layout.py"
       - "scripts/test_performance_contract.py"
+      - "scripts/test_relatorio_geral_necessidade.py"
+      - "indicadores_entregas_v2.py"
   workflow_dispatch:
 
 permissions:
@@ -39,8 +43,12 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compilar módulos alterados
-        run: python -m py_compile streamlit_app.py streamlit_app_original.py setta_visual.py ui_refinements.py indicadores_dashboard.py controle_acesso.py
+        run: python -m py_compile streamlit_app.py streamlit_app_original.py setta_visual.py ui_refinements.py indicadores_dashboard.py controle_acesso.py indicadores_entregas_v2.py
       - name: Executar testes de regressão da interface
         run: python scripts/test_ui_favicon_and_layout.py
       - name: Validar regressões de desempenho
         run: python scripts/test_performance_contract.py
+      - name: Instalar pandas para teste da necessidade
+        run: python -m pip install "pandas>=2.2,<3"
+      - name: Validar layout novo do Relatorio Geral
+        run: python scripts/test_relatorio_geral_necessidade.py
